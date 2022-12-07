@@ -9,12 +9,14 @@ Linux: Run `sudo npm install -g jscodeshift`
 
 ## Run against sample files
 
-`npm run debug:samples`
-`npm run debug:sample:methods`
-`npm run debug:sample:publications`
-`npm run debug:sample:utils`
+- `npm run debug:samples`
+- `npm run debug:sample:methods`
+- `npm run debug:sample:publications`
+- `npm run debug:sample:utils`
 
 ## Run against your codebase
+
+**ATTENTION:** You might want to modify the file transform.ts at line 99 to fit your codebase.
 
 Use `jscodeshift` command directly
 Run `jscodeshift --help` for more information

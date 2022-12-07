@@ -173,12 +173,20 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
 
     let functionName = p.value.id?.name;
     if (p.value.type === "ArrowFunctionExpression") {
-      debug(
-        "====>arrow function declaration",
-        j(p.parentPath).toSource()
-        // p.parentPath
-      );
-      functionName = p.parentPath.value.id.name;
+      try {
+        debug(
+          "====>arrow function declaration",
+          j(p.parentPath).toSource()
+          // p.parentPath
+        );
+      } catch (e) {
+        debug("====>arrow function declaration");
+      }
+      functionName = p.parentPath?.value?.id?.name;
+    }
+
+    if (!functionName) {
+      return;
     }
 
     // find all expressions of this function
@@ -204,7 +212,11 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
     // handle function declarations
     debug("find all functions inside");
     subCollection.find(j.ArrowFunctionExpression).map((p) => {
-      debug("found function", j(p).toSource());
+      try {
+        debug("found function", j(p).toSource());
+      } catch (e) {
+        debug("found function");
+      }
       if (handleFunctionSubCollection(j(p))) {
         needToBeAsync = true;
 
@@ -371,6 +383,7 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
 
     return null;
   });
+
   debug("**************************************************");
 
   return rootCollection.toSource();

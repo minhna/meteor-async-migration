@@ -96,11 +96,16 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
       // You may want to make some double check here
       // but you must be aware of other collection, e.g: Meteor.users
 
+      // ATTENTION: you may want to modify this logic here
       // in our case, we usually import the collection from schema file
       const schemaRegExp = /schema.*(\.js|\.ts|)$/;
       if (schemaRegExp.test(importSource)) {
         return true;
       }
+
+      // incase you're not sure, just return true here, so it will continue
+      // return true;
+
       debug(`Unrecognized import source ${importPath.value.source.value}`);
     }
     return false;

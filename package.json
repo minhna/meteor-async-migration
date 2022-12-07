@@ -1,4 +1,11 @@
 {
+  "scripts": {
+    "samples": "jscodeshift -t transform.ts --dry -p ./samples",
+    "debug:samples": "DEBUG=transform:* jscodeshift -c 1 -t transform.ts --dry -p ./samples",
+    "debug:sample:methods": "DEBUG=transform:* jscodeshift -t transform.ts --dry -p ./samples/methods.js",
+    "debug:sample:publications": "DEBUG=transform:* jscodeshift -t transform.ts --dry -p ./samples/publications.js",
+    "debug:sample:utils": "DEBUG=transform:* jscodeshift -t transform.ts --dry -p ./samples/utils.js"
+  },
   "devDependencies": {
     "@types/jscodeshift": "^0.11.5",
     "@types/node": "^18.11.11"

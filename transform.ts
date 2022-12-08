@@ -9,6 +9,7 @@ import {
   ExpressionStatement,
   FunctionDeclaration,
   ArrowFunctionExpression,
+  FunctionExpression,
 } from "jscodeshift";
 
 const methodsMapping = {
@@ -166,23 +167,37 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
   };
 
   const handleFunctionInsideFunction = (
-    p: ASTPath<FunctionDeclaration | ArrowFunctionExpression>,
+    p: ASTPath<
+      FunctionDeclaration | ArrowFunctionExpression | FunctionExpression
+    >,
     subCollection: Collection
   ) => {
     p.value.async = true;
 
-    let functionName = p.value.id?.name;
-    if (p.value.type === "ArrowFunctionExpression") {
-      try {
-        debug(
-          "====>arrow function declaration",
-          j(p.parentPath).toSource()
-          // p.parentPath
-        );
-      } catch (e) {
-        debug("====>arrow function declaration");
-      }
-      functionName = p.parentPath?.value?.id?.name;
+    try {
+      debug(
+        "function declaration",
+        j(p.parentPath).toSource()
+        // p.parentPath
+      );
+    } catch (e) {
+      debug("function declaration");
+    }
+
+    let functionName;
+    switch (p.value.type) {
+      case "ArrowFunctionExpression":
+        debug("============arrow function expression", p.parentPath);
+        functionName = p.parentPath?.value?.id?.name;
+        break;
+      case "FunctionDeclaration":
+        debug("============function declaration", p.value);
+        functionName = p.value.id?.name;
+        break;
+      case "FunctionExpression":
+        debug("============function expression", p.value);
+        break;
+      default:
     }
 
     if (!functionName) {
@@ -213,7 +228,7 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
     debug("find all functions inside");
     subCollection.find(j.ArrowFunctionExpression).map((p) => {
       try {
-        debug("found function", j(p).toSource());
+        debug("found arrow function", j(p).toSource());
       } catch (e) {
         debug("found function");
       }
@@ -224,8 +239,17 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
       }
       return null;
     });
+    subCollection.find(j.FunctionExpression).map((p) => {
+      debug("found function expression", j(p).toSource());
+      if (handleFunctionSubCollection(j(p))) {
+        needToBeAsync = true;
+
+        handleFunctionInsideFunction(p, subCollection);
+      }
+      return null;
+    });
     subCollection.find(j.FunctionDeclaration).map((p) => {
-      debug("found function", j(p).toSource());
+      debug("found function declaration", j(p).toSource());
       if (handleFunctionSubCollection(j(p))) {
         needToBeAsync = true;
 

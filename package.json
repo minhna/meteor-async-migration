@@ -1,16 +1,27 @@
 {
   "scripts": {
-    "samples": "jscodeshift -t transform.ts --dry -p ./samples",
-    "debug:samples": "DEBUG=transform:* jscodeshift -c 1 -t transform.ts --dry -p ./samples",
-    "debug:sample:methods": "DEBUG=transform:* jscodeshift -t transform.ts --dry -p ./samples/methods.js",
-    "debug:sample:publications": "DEBUG=transform:* jscodeshift -t transform.ts --dry -p ./samples/publications.js",
-    "debug:sample:utils": "DEBUG=transform:* jscodeshift -t transform.ts --dry -p ./samples/utils.js"
+    "samples": "jscodeshift -t transform.ts --dry -p --parser=tsx ./samples",
+    "debug:samples": "DEBUG=transform:* jscodeshift -c 1 -t transform.ts --dry -p --parser=tsx ./samples",
+    "debug:sample:methods": "DEBUG=transform:* jscodeshift -t transform.ts --dry -p --parser=tsx ./samples/methods.js",
+    "debug:sample:publications": "DEBUG=transform:* jscodeshift -t transform.ts --dry -p --parser=tsx ./samples/publications.js",
+    "debug:sample:utils": "DEBUG=transform:* jscodeshift -t transform.ts --dry -p --parser=tsx ./samples/utils.js",
+    "debug:handle-async-import:samples": "DEBUG=transform:* jscodeshift -t transform-export-async-function.ts --dry -p --parser=tsx ./samples"
   },
   "devDependencies": {
     "@types/jscodeshift": "^0.11.5",
     "@types/node": "^18.11.11"
   },
   "dependencies": {
-    "debug": "^4.3.4"
+    "@babel/preset-typescript": "^7.18.6",
+    "@babel/runtime": "^7.20.6",
+    "debug": "^4.3.4",
+    "jscodeshift": "^0.14.0",
+    "recast": "^0.21.5"
+  },
+  "babel": {
+    "plugins": [
+      "jsx",
+      "typescript"
+    ]
   }
 }

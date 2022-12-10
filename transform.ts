@@ -160,6 +160,10 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
 
   const addAwaitKeyword = (p: ASTPath<CallExpression>) => {
     // debug('need add await', j(p).toSource(), p)
+    if (p.parentPath?.value.type === "AwaitExpression") {
+      debug("already has await expression");
+      return;
+    }
     const awaitNode = j.awaitExpression(p.value);
     debug(j(awaitNode).toSource());
     debug(j(p.value).toSource());
@@ -400,6 +404,14 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
     return null;
   });
   rootCollection.find(j.FunctionDeclaration).map((p) => {
+    debug("Found function", j(p.value).toSource());
+    if (handleFunctionSubCollection(j(p))) {
+      p.value.async = true;
+    }
+
+    return null;
+  });
+  rootCollection.find(j.ObjectMethod).map((p) => {
     debug("Found function", j(p.value).toSource());
     if (handleFunctionSubCollection(j(p))) {
       p.value.async = true;

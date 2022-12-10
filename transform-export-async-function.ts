@@ -8,6 +8,7 @@ import {
   CallExpression,
   ExportDefaultDeclaration,
   ExportNamedDeclaration,
+  AwaitExpression,
 } from "jscodeshift";
 
 const tsParser = require("jscodeshift/parser/ts");
@@ -196,10 +197,14 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
   };
 
   const addAwaitKeyword = (p: ASTPath<CallExpression>) => {
-    // debug('need add await', j(p).toSource(), p)
+    debug("need add await:", j(p).toSource());
+    if (p.parentPath?.value.type === "AwaitExpression") {
+      debug("already has await expression");
+      return;
+    }
     const awaitNode = j.awaitExpression(p.value);
-    debug(j(awaitNode).toSource());
-    debug(j(p.value).toSource());
+    debug("=>", j(awaitNode).toSource());
+    // debug(j(p.value).toSource());
     j(p).replaceWith(awaitNode);
   };
 
@@ -209,12 +214,13 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
     }
     // debug("find parent function of this", p);
 
-    // debug("parent", p.parentPath);
+    // debug("parent", p.parentPath.value?.loc?.start);
     if (
       [
         "ArrowFunctionExpression",
         "FunctionExpression",
         "FunctionDeclaration",
+        "ObjectMethod",
       ].includes(p.parentPath.value.type)
     ) {
       return p.parentPath;
@@ -240,15 +246,19 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
           p2.value.callee.type === "Identifier" && p2.value.callee.name === name
       )
       .map((p3) => {
-        // debug("p3", p3);
-        // addAwaitKeyword(p3);
+        addAwaitKeyword(p3);
         const parentFunctionPath = findParentFunctionAsync(p3);
-        // debug("parent function path", parentFunctionPath);
+        // debug("parent function path", parentFunctionPath?.value);
         if (
           parentFunctionPath?.value.type === "ArrowFunctionExpression" ||
           parentFunctionPath?.value.type === "FunctionDeclaration" ||
-          parentFunctionPath?.value.type === "FunctionExpression"
+          parentFunctionPath?.value.type === "FunctionExpression" ||
+          parentFunctionPath?.value.type === "ObjectMethod"
         ) {
+          debug(
+            "set parent function async",
+            parentFunctionPath.value.loc?.start
+          );
           parentFunctionPath.value.async = true;
         }
         return null;

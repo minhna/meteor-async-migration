@@ -1,52 +1,60 @@
-import { Meteor } from 'meteor/meteor'
-import Codes from '../schema'
-import Profiles from '../../schema.js'
-import { getUserRoles } from '../../users/utils'
-import { canDo } from '../../utils/access-control'
+import { Meteor } from "meteor/meteor";
+import Codes from "../schema";
+import Profiles from "../../schema.js";
+import { getUserRoles } from "../../users/utils";
+import { canDo } from "../../utils/access-control";
 
-Meteor.publish('all.codes', function () {
+Meteor.publish("all.codes", function () {
   // check for permission
-  const myRoles = getUserRoles(this.userId)
-  if (!canDo({ op: 'readAny', role: myRoles, resource: 'code', log: 'all.codes' })) {
-    return this.ready()
+  const myRoles = getUserRoles(this.userId);
+  if (
+    !canDo({ op: "readAny", role: myRoles, resource: "code", log: "all.codes" })
+  ) {
+    return this.ready();
   }
 
-  return Codes.find({ bogus: true })
-})
+  return Codes.find({ bogus: true });
+});
 
-Meteor.publish('id.codes', (id) => {
+Meteor.publish("id.codes", (id) => {
   // check for permission
-  const myRoles = getUserRoles(this.userId)
-  if (!canDo({ op: 'readAny', role: myRoles, resource: 'code', log: 'id.codes' })) {
-    return this.ready()
+  const myRoles = getUserRoles(this.userId);
+  if (
+    !canDo({ op: "readAny", role: myRoles, resource: "code", log: "id.codes" })
+  ) {
+    return this.ready();
   }
 
-  return [Codes.find({ _id: id })]
-})
+  return [Codes.find({ _id: id })];
+});
 
-Meteor.publish('codes.byUserProfileId', function ({ profileId }) {
-  const profile = Profiles.findOne({ _id: profileId })
+Meteor.publish("codes.byUserProfileId", function ({ profileId }) {
+  const profile = Profiles.findOne({ _id: profileId });
   if (!profile) {
-    throw new Meteor.Error('Profile was not found')
+    throw new Meteor.Error("Profile was not found");
   }
-  return Codes.find({ profileId })
-})
+  return Codes.find({ profileId });
+});
 
-Meteor.publish('functionInside', function ({ profileId }) {
+Meteor.publish("functionInside", function ({ profileId }) {
   // it's okay doing this
   const findProfile = (id) => {
-    return Profiles.findOne({ _id: profileId })
-  }
+    return Profiles.findOne({ _id: profileId });
+  };
 
   function findUser(id) {
-    return Meteor.users.findOne(id)
+    return Meteor.users.findOne(id);
   }
 
-  const user = findUser('a')
+  const user = findUser("a");
 
-  const profile = findProfile(profileId)
+  const myVar = [("a", "b")].map(function (i) {
+    return Meteor.users.findOne(i);
+  });
+
+  const profile = findProfile(profileId);
   if (!profile) {
-    throw new Meteor.Error('Profile was not found')
+    throw new Meteor.Error("Profile was not found");
   }
-  return Codes.find({ profileId })
-})
+  return Codes.find({ profileId });
+});

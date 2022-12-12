@@ -9,11 +9,19 @@ import {
   ExportDefaultDeclaration,
   ExportNamedDeclaration,
   AwaitExpression,
+  Collection,
 } from "jscodeshift";
 
 const tsParser = require("jscodeshift/parser/ts");
 
 const debug = require("debug")("transform:export-async-script");
+
+import {
+  addAwaitKeyword,
+  convertAllCallExpressionToAsync,
+  findParentFunction,
+  setFunctionAsync,
+} from "./utils";
 
 const METEOR_ROOT_DIRECTORY = "/home/minhna/WORKS/Mike/settler/se2-admin";
 
@@ -196,75 +204,6 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
     return isAsync;
   };
 
-  const addAwaitKeyword = (p: ASTPath<CallExpression>) => {
-    debug("need add await:", j(p).toSource());
-    if (p.parentPath?.value.type === "AwaitExpression") {
-      debug("already has await expression");
-      return;
-    }
-    const awaitNode = j.awaitExpression(p.value);
-    debug("=>", j(awaitNode).toSource());
-    // debug(j(p.value).toSource());
-    j(p).replaceWith(awaitNode);
-  };
-
-  const findParentFunctionAsync = (p: ASTPath): ASTPath | undefined => {
-    if (!p.parentPath) {
-      return undefined;
-    }
-    // debug("find parent function of this", p);
-
-    // debug("parent", p.parentPath.value?.loc?.start);
-    if (
-      [
-        "ArrowFunctionExpression",
-        "FunctionExpression",
-        "FunctionDeclaration",
-        "ObjectMethod",
-      ].includes(p.parentPath.value.type)
-    ) {
-      return p.parentPath;
-    }
-
-    if (p.parentPath) {
-      return findParentFunctionAsync(p.parentPath);
-    }
-
-    return undefined;
-  };
-
-  const handleAsyncImportedFunction = (name: string) => {
-    debug(
-      name,
-      ": convert all functions use this imported async function to async:"
-    );
-    // find all function call then add await to
-    rootCollection
-      .find(j.CallExpression, {})
-      .filter(
-        (p2) =>
-          p2.value.callee.type === "Identifier" && p2.value.callee.name === name
-      )
-      .map((p3) => {
-        addAwaitKeyword(p3);
-        const parentFunctionPath = findParentFunctionAsync(p3);
-        // debug("parent function path", parentFunctionPath?.value);
-        if (
-          parentFunctionPath?.value.type === "ArrowFunctionExpression" ||
-          parentFunctionPath?.value.type === "FunctionDeclaration" ||
-          parentFunctionPath?.value.type === "FunctionExpression" ||
-          parentFunctionPath?.value.type === "ObjectMethod"
-        ) {
-          debug(
-            "set parent function async",
-            parentFunctionPath.value.loc?.start
-          );
-          parentFunctionPath.value.async = true;
-        }
-        return null;
-      });
-  };
-
   // find all imported async functions
   const importedNodes = rootCollection.find(j.ImportDeclaration);
   importedNodes.map((p) => {
@@ -293,7 +232,11 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
                 });
                 debug("==>is async function:", isAsyncFunction);
                 if (isAsyncFunction) {
-                  handleAsyncImportedFunction(spec.local.name);
+                  convertAllCallExpressionToAsync(
+                    spec.local.name,
+                    rootCollection,
+                    j
+                  );
                 }
               }
               break;
@@ -311,7 +254,11 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
                 });
                 debug("==>is async function:", isAsyncFunction);
                 if (isAsyncFunction) {
-                  handleAsyncImportedFunction(spec.local.name);
+                  convertAllCallExpressionToAsync(
+                    spec.local.name,
+                    rootCollection,
+                    j
+                  );
                 }
               }
               break;

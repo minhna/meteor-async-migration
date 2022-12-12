@@ -28,6 +28,8 @@ const methodsMapping = {
   map: "mapAsync",
 };
 
+import { addAwaitKeyword } from "./utils";
+
 const debug = require("debug")("transform:script");
 
 module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
@@ -158,18 +160,6 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
     return isCursorCall;
   };
 
-  const addAwaitKeyword = (p: ASTPath<CallExpression>) => {
-    // debug('need add await', j(p).toSource(), p)
-    if (p.parentPath?.value.type === "AwaitExpression") {
-      debug("already has await expression");
-      return;
-    }
-    const awaitNode = j.awaitExpression(p.value);
-    debug(j(awaitNode).toSource());
-    debug(j(p.value).toSource());
-    j(p).replaceWith(awaitNode);
-  };
-
   const handleFunctionInsideFunction = (
     p: ASTPath<
       FunctionDeclaration | ArrowFunctionExpression | FunctionExpression
@@ -220,7 +210,7 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
       )
       .map((p3) => {
         // debug('p3', p3)
-        addAwaitKeyword(p3);
+        addAwaitKeyword(p3, j);
         return null;
       });
   };
@@ -282,7 +272,7 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
                   break;
                 }
 
-                addAwaitKeyword(p);
+                addAwaitKeyword(p, j);
                 needToBeAsync = true;
                 // convert to findOneAsync
                 callee.property.name = methodsMapping[callee.property.name];
@@ -304,7 +294,7 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
                       break;
                     }
 
-                    addAwaitKeyword(p);
+                    addAwaitKeyword(p, j);
                     needToBeAsync = true;
                     // convert to findOneAsync
                     callee.property.name = methodsMapping[callee.property.name];
@@ -351,7 +341,7 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
                       });
 
                     if (isCursorCall) {
-                      addAwaitKeyword(p);
+                      addAwaitKeyword(p, j);
                       needToBeAsync = true;
                       // convert to findOneAsync
                       callee.property.name =

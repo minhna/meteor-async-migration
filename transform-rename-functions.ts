@@ -85,8 +85,13 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
         return null;
       });
     debug("++modified toNode arguments", toNode);
+    debug("++node to be replaced", p);
     // now update the code
-    j(p.parentPath).replaceWith(toNode.value);
+    if (p.value.type === "CallExpression") {
+      j(p).replaceWith(toNode.value);
+    } else {
+      j(p.parentPath).replaceWith(toNode.value);
+    }
     // check if toNode is await expression
     if (toNode.value.expression.type === "AwaitExpression") {
       // find the parent function
@@ -161,7 +166,7 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
                 p.value.object.name === object.name &&
                 p.value.property.name === property.name
               ) {
-                debug("++found", p.parentPath);
+                debug("++found 2", p.parentPath);
                 replaceFunction(
                   p.parentPath,
                   toNode,

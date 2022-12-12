@@ -30,3 +30,10 @@ function useSampleThree() {
 const useSampleTwo = () => {
   sampleTwo();
 };
+
+export function createListingWithPeople(customListingData = {}) {
+  const users = createTeam(["CUS", "CON", "PM"]);
+  customListingData.persons = users;
+  const listing = Factory.create("listings", customListingData);
+  return { listing, users: users };
+}

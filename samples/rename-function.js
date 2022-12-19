@@ -9,7 +9,7 @@ const buildAsync = () => {};
 
 const create = () => {};
 
-async function sampleOne() {
+function sampleOne() {
   Factory.create({ p1: 1, p2: "a" }, 2);
   build(3);
   create({ a: [1, 2], b: { c: 1 } });
@@ -37,3 +37,15 @@ export function createListingWithPeople(customListingData = {}) {
   const listing = Factory.create("listings", customListingData);
   return { listing, users: users };
 }
+
+const connie = Factory.create("user", { name: "Connie Vey", roles: ["CON"] });
+const bert = Factory.create("user1", { name: "Bert Buyer", roles: ["CUS"] });
+const betty = Factory.create("user2", { name: "Betty Buyer", roles: ["CUS"] });
+const pm = Factory.create("user3", {
+  name: "Prima Donna",
+  roles: ["PM"],
+});
+const orange = Factory.create("user4", {
+  name: "Agent Orange",
+  roles: ["AGT"],
+});

@@ -1,3 +1,9 @@
+/**
+ * Rename some function calls but keep the params
+ * Currently it will find and replace once only.
+ * You may need to run many times until it replace all the function.
+ */
+
 import {
   FileInfo,
   API,
@@ -11,6 +17,9 @@ import {
   ArrowFunctionExpression,
   FunctionExpression,
 } from "jscodeshift";
+
+import * as recast from "recast";
+
 import {
   convertAllCallExpressionToAsync,
   findParentFunction,
@@ -56,10 +65,20 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
   const rootCollection = j(fileInfo.source);
   // debug(rootCollection)
 
+  const MAX_REPLACEMENT = 1;
+  let replaceCounter = 0;
+
   const getExpressionStatementFromString = (
     source: string
   ): ASTPath<ExpressionStatement> | undefined => {
     let sourceNode: ASTPath<ExpressionStatement> | undefined = undefined;
+    try {
+      const n = recast.parse(source).program.body[0];
+      debug("***recast***", source, n);
+      debug(j(n));
+    } catch (e) {
+      // debug("parse error", e);
+    }
     j(source)
       .find(j.ExpressionStatement)
       .at(0)
@@ -73,35 +92,53 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
 
   const replaceFunction = (
     p: ASTPath<CallExpression>,
-    toNode: ASTPath<ExpressionStatement>,
+    byNode: ASTPath<ExpressionStatement>,
     args: CallExpression["arguments"]
   ) => {
-    j(toNode)
+    if (MAX_REPLACEMENT && replaceCounter >= MAX_REPLACEMENT) {
+      return;
+    }
+
+    // debug("+++replace", j(p).toSource(), j(args).toSource());
+    // debug("+++byNode before modified args", byNode, byNode.value.loc?.start);
+    j(byNode)
       .find(j.CallExpression)
       .at(0)
       .map((tp) => {
-        debug("++tp", tp);
+        // debug("+++tp", tp);
         tp.value.arguments = args;
         return null;
       });
-    debug("++modified toNode arguments", toNode);
-    debug("++node to be replaced", p);
+    // debug("+++modified byNode arguments", byNode, j(byNode).toSource());
     // now update the code
+    let replaceThisPath;
     if (p.value.type === "CallExpression") {
-      j(p).replaceWith(toNode.value);
+      replaceThisPath = p;
     } else {
-      j(p.parentPath).replaceWith(toNode.value);
+      replaceThisPath = p.parentPath;
     }
-    // check if toNode is await expression
-    if (toNode.value.expression.type === "AwaitExpression") {
+    debug(
+      "\n+++replace this",
+      j(replaceThisPath).toSource(),
+      p.value.loc?.start,
+      p.value.loc?.end
+    );
+    debug("+++by this", j(byNode.value).toSource());
+    j(replaceThisPath).replaceWith(byNode.value);
+
+    // increase the counter
+    replaceCounter += 1;
+
+    // check if byNode is await expression
+    if (byNode.value.expression.type === "AwaitExpression") {
       // find the parent function
-      const parentFunctionPath = findParentFunction(p);
+      const parentFunctionPath = findParentFunction(replaceThisPath);
       if (parentFunctionPath) {
         setFunctionAsync(parentFunctionPath);
         // then find all functions which use this async function
-        debug("++the parent", parentFunctionPath);
         switch (parentFunctionPath.value.type) {
-          case "FunctionDeclaration":
+          case "FunctionDeclaration": {
+            debug("+++the parent", parentFunctionPath.value?.id?.loc?.start);
             if (parentFunctionPath.value.id?.type === "Identifier") {
               convertAllCallExpressionToAsync(
                 parentFunctionPath.value.id?.name,
@@ -110,9 +147,10 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
               );
             }
             break;
+          }
           default:
             debug(
-              "+++Unhandled parent function type:",
+              "++++Unhandled parent function type:",
               parentFunctionPath.value.type
             );
         }
@@ -125,8 +163,8 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
     debug(`======= ${from} ==> ${to} =======`);
     const fromNode = getExpressionStatementFromString(from);
     const toNode = getExpressionStatementFromString(to);
-    debug("fromNode value expression", fromNode?.value.expression);
-    debug("toNode value expression", toNode?.value.expression);
+    // debug("fromNode value expression", fromNode?.value.expression);
+    // debug("toNode value expression", toNode?.value.expression);
 
     if (!fromNode || !toNode) {
       return null;
@@ -140,13 +178,13 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
           case "Identifier": {
             // find all call expression with callee type is Identifier
             const calleeName = fromNode.value.expression.callee.name;
-            debug("+fromNode.value.expression.callee.name", calleeName);
+            // debug("+fromNode.value.expression.callee.name", calleeName);
             rootCollection.find(j.CallExpression).map((p) => {
               if (
                 p.value.callee?.type === "Identifier" &&
                 calleeName === p.value.callee.name
               ) {
-                debug("++found", p);
+                // debug("++found", p);
                 replaceFunction(p, toNode, p.value.arguments);
               }
               return null;
@@ -166,7 +204,7 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
                 p.value.object.name === object.name &&
                 p.value.property.name === property.name
               ) {
-                debug("++found 2", p.parentPath);
+                // debug("++found 2", p.parentPath);
                 replaceFunction(
                   p.parentPath,
                   toNode,

@@ -2,8 +2,8 @@ import { first, second, aVariable } from "./export-async-function";
 import third from "./export-async-function";
 import { fourth } from "./export-async-function";
 
-const useFirst = async () => {
-  return await first();
+const useFirst = () => {
+  return first();
 };
 
 export async function useSecond() {

@@ -1,3 +1,12 @@
+/**
+ * 1. Open file
+ * 2. Find all imports
+ * 3. Go to the source, which exported functions/variables
+ * 4. Check if the exported variable in source file is async function
+ * 5. If it was async function, find all the call expression of that async function
+ * 6. Convert them to await expressions
+ */
+
 import fs from "fs";
 
 import {

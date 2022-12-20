@@ -17,6 +17,13 @@ export const addAwaitKeyword = (p: ASTPath<CallExpression>, j: JSCodeshift) => {
     debug("already has await expression");
     return false;
   }
+
+  debug("add await keyword", p.parentPath.parentPath.value);
+  if (findParentPromiseAll(p)) {
+    debug("has Promise.all parent");
+    return false;
+  }
+
   const awaitNode = j.awaitExpression(p.value);
   debug(j(awaitNode).toSource());
   debug(j(p.value).toSource());
@@ -24,11 +31,34 @@ export const addAwaitKeyword = (p: ASTPath<CallExpression>, j: JSCodeshift) => {
   return true;
 };
 
+export const findParentPromiseAll = (p: ASTPath) => {
+  if (!p || p.parentPath.value.type === "BlockStatement") {
+    return;
+  }
+
+  if (
+    p.parentPath.value.type === "CallExpression" &&
+    p.parentPath.value.callee.type === "MemberExpression"
+  ) {
+    const { object, property } = p.parentPath.value.callee;
+    if (
+      object.type === "Identifier" &&
+      object.name === "Promise" &&
+      property.type === "Identifier" &&
+      property.name === "all"
+    ) {
+      return p.parent;
+    }
+  }
+
+  return findParentPromiseAll(p.parentPath);
+};
+
 export const findParentFunction = (p: ASTPath): ASTPath | undefined => {
   if (!p.parentPath) {
     return undefined;
   }
-  debug("find parent function of this", p);
+  // debug("find parent function of this", p);
 
   // debug("parent", p.parentPath.value?.loc?.start);
   if (
@@ -56,10 +86,14 @@ export const findParentCallExpression = (
   if (!p.parentPath) {
     return undefined;
   }
-  debug("find parent call expression of this", p);
+  // debug("find parent call expression of this", p, p.value);
 
   // debug("parent", p.parentPath.value?.loc?.start);
-  if (["CallExpression"].includes(p.parentPath.value.type)) {
+  if (
+    ["CallExpression", "OptionalCallExpression"].includes(
+      p.parentPath.value.type
+    )
+  ) {
     return p.parentPath;
   }
 

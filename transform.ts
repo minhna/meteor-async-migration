@@ -3,13 +3,8 @@ import {
   API,
   Options,
   ASTPath,
-  Collection,
   MemberExpression,
-  CallExpression,
   ExpressionStatement,
-  FunctionDeclaration,
-  ArrowFunctionExpression,
-  FunctionExpression,
   ExportDefaultDeclaration,
   ExportNamedDeclaration,
 } from "jscodeshift";
@@ -303,12 +298,14 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
         case "map": {
           debug("cursors methods");
           debug(j(p).toSource());
-          // debug('callee.object', callee.object)
+          debug("p.value.object", p.value.object);
           switch (p.value.object.type) {
             case "CallExpression": {
               // check to make sure we call find() method in the chaining call
               const preCallee = p.value.object.callee;
+              debug("preCallee", preCallee);
               if (!checkIsCursorPreCallee(preCallee)) {
+                debug("not a cursor");
                 break;
               }
 
@@ -327,6 +324,8 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
                     fileChanged = true;
                   }
                 }
+              } else {
+                debug("call expression was not found");
               }
 
               break;
@@ -396,7 +395,7 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
           break;
         }
         default:
-          debug("Unhandled callee property", p.value.property.name);
+          debug("Unhandled callee property:", p.value.property.name);
       }
     }
 

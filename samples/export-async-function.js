@@ -36,3 +36,5 @@ F.first();
 F.otherFirst();
 F.fif();
 theFirst();
+
+export const Profiles = new Mongo.Collection("profiles");

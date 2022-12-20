@@ -1,4 +1,11 @@
-import { ASTPath, CallExpression, JSCodeshift, Collection } from "jscodeshift";
+import {
+  ASTPath,
+  CallExpression,
+  JSCodeshift,
+  Collection,
+  BlockStatement,
+  VariableDeclarator,
+} from "jscodeshift";
 import fs from "fs";
 import CONSTANTS from "./constants";
 
@@ -43,6 +50,26 @@ export const findParentFunction = (p: ASTPath): ASTPath | undefined => {
   return undefined;
 };
 
+export const findParentCallExpression = (
+  p: ASTPath
+): ASTPath<CallExpression> | undefined => {
+  if (!p.parentPath) {
+    return undefined;
+  }
+  debug("find parent call expression of this", p);
+
+  // debug("parent", p.parentPath.value?.loc?.start);
+  if (["CallExpression"].includes(p.parentPath.value.type)) {
+    return p.parentPath;
+  }
+
+  if (p.parentPath) {
+    return findParentCallExpression(p.parentPath);
+  }
+
+  return undefined;
+};
+
 export const findParentObject = (p: ASTPath): ASTPath | undefined => {
   if (!p) {
     debug("invalid p", p);
@@ -58,6 +85,65 @@ export const findParentObject = (p: ASTPath): ASTPath | undefined => {
   }
   debug("No parent found:", p);
   return undefined;
+};
+
+export const findParentBlock = (p: ASTPath): ASTPath | undefined => {
+  if (!p) {
+    debug("findParentBlock, invalid p", p);
+    return undefined;
+  }
+  if (p.value.type === "BlockStatement") {
+    return p;
+  }
+  if (!p.parentPath) {
+    // root of the file?
+    return p;
+  } else {
+    return findParentBlock(p.parentPath);
+  }
+};
+
+export const findVariableDeclarator = (
+  name: string,
+  p: ASTPath,
+  j: JSCodeshift
+) => {
+  let declarator: ASTPath<VariableDeclarator> | undefined = undefined;
+
+  if (!p) {
+    return undefined;
+  }
+
+  // get the parent block
+  const thisBlock = findParentBlock(p);
+  if (thisBlock && thisBlock.value.type === "BlockStatement") {
+    const thisBlockLocStart = thisBlock.value.loc?.start;
+    j(thisBlock)
+      .findVariableDeclarators(name)
+      .at(0)
+      .map((varDeclarePath) => {
+        debug("found variable:", varDeclarePath.value.loc?.start);
+        // TODO: check the location
+
+        // get the parent block of the variable
+        const variableParentBlock = findParentBlock(varDeclarePath);
+        if (
+          variableParentBlock?.value.type === "BlockStatement" &&
+          variableParentBlock.value.loc?.start.line === thisBlockLocStart?.line
+        ) {
+          declarator = varDeclarePath;
+        }
+        return null;
+      });
+  } else {
+    return undefined;
+  }
+
+  if (!declarator) {
+    return findParentBlock(thisBlock);
+  }
+
+  return declarator;
 };
 
 export const setFunctionAsync = (p: ASTPath) => {
@@ -234,4 +320,35 @@ export const getRealImportSource = (
     return CONSTANTS.METEOR_ROOT_DIRECTORY + importPath;
   }
   return getPathFromSource(currentPath) + "/" + importPath.replace(/^\.\//, "");
+};
+
+export const isMongoCollection = (name: string, collection: Collection) => {
+  let result = false;
+  collection
+    .findVariableDeclarators(name)
+    .at(0)
+    .map((p6) => {
+      // debug(p6.value.init)
+      if (
+        p6.value.type === "VariableDeclarator" &&
+        p6.value.init?.type === "NewExpression" &&
+        p6.value.init.callee.type === "MemberExpression"
+      ) {
+        const { object, property } = p6.value.init.callee;
+        if (
+          object.type === "Identifier" &&
+          object.name === "Mongo" &&
+          property.type === "Identifier" &&
+          property.name === "Collection"
+        ) {
+          result = true;
+        }
+      }
+      // declarationPath = p6
+      return null;
+    });
+  if (!result) {
+    debug(`Not a local declaration mongo collection: ${name}`);
+  }
+  return result;
 };

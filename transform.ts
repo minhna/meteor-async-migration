@@ -10,6 +10,8 @@ import {
   FunctionDeclaration,
   ArrowFunctionExpression,
   FunctionExpression,
+  ExportDefaultDeclaration,
+  ExportNamedDeclaration,
 } from "jscodeshift";
 
 const methodsMapping = {
@@ -28,9 +30,21 @@ const methodsMapping = {
   map: "mapAsync",
 };
 
-import { addAwaitKeyword } from "./utils";
+import {
+  addAwaitKeyword,
+  findParentCallExpression,
+  findParentFunction,
+  findVariableDeclarator,
+  getFileContent,
+  getRealImportSource,
+  isMongoCollection,
+  setFunctionAsync,
+} from "./utils";
+
+const tsParser = require("jscodeshift/parser/ts");
 
 const debug = require("debug")("transform:script");
+const debug2 = require("debug")("transform:print:script");
 
 module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
   debug(
@@ -38,6 +52,8 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
 *** ${fileInfo.path}
 **************************************************`
   );
+  let fileChanged = false;
+
   const rootCollection = j(fileInfo.source);
   // debug(rootCollection)
 
@@ -58,59 +74,144 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
     return importPath;
   };
 
-  const isMongoCollection = (name: string) => {
-    let result = false;
-    rootCollection
-      .findVariableDeclarators(name)
-      .at(0)
-      .map((p6) => {
-        // debug(p6.value.init)
-        if (
-          p6.value.type === "VariableDeclarator" &&
-          p6.value.init?.type === "NewExpression" &&
-          p6.value.init.callee.type === "MemberExpression"
-        ) {
-          const { object, property } = p6.value.init.callee;
-          if (
-            object.type === "Identifier" &&
-            object.name === "Mongo" &&
-            property.type === "Identifier" &&
-            property.name === "Collection"
-          ) {
-            result = true;
-          }
-        }
-        // declarationPath = p6
-        return null;
-      });
-    if (!result) {
-      debug(`Not a local declaration mongo collection: ${name}`);
-    }
-    return result;
-  };
+  const checkedImportedVariables: { [key: string]: boolean } = {};
 
   const isImportMongoCollection = (name: string) => {
+    if (checkedImportedVariables[name] === true) {
+      return true;
+    }
+    if (checkedImportedVariables[name] === false) {
+      return false;
+    }
+
     const importPath = findImportPath(name);
-    if (importPath && importPath.value.type === "ImportDeclaration") {
-      const importSource = j(importPath).toSource();
-      debug("import source", importSource);
-      // debug(importPath.value.source.value)
+    if (
+      importPath &&
+      importPath.value.type === "ImportDeclaration" &&
+      importPath.value.source.type === "StringLiteral"
+    ) {
+      debug("import type", importPath.value);
+      debug("import path", importPath.value.source.value);
 
-      // You may want to make some double check here
-      // but you must be aware of other collection, e.g: Meteor.users
+      let importSpec = "";
+      importPath.value.specifiers?.map((spec) => {
+        debug("spec.local?.name", spec.local?.name);
+        if (spec.local?.name !== name) {
+          return;
+        }
+        switch (spec.type) {
+          case "ImportDefaultSpecifier": {
+            importSpec = "default";
+            break;
+          }
+          case "ImportSpecifier": {
+            importSpec = "named";
+            break;
+          }
+          default:
+            debug("Unhandled import specifier type:", spec.type);
+        }
+      });
 
-      // ATTENTION: you may want to modify this logic here
-      // in our case, we usually import the collection from schema file
-      const schemaRegExp = /schema.*(\.js|\.ts|)$/;
-      if (schemaRegExp.test(importSource)) {
-        return true;
+      // open file to read
+      const realImportSource = getRealImportSource(
+        importPath.value.source.value,
+        fileInfo.path
+      );
+      debug({ realImportSource });
+
+      const fileContent = getFileContent(realImportSource);
+      // debug("content\n", fileContent);
+
+      if (!fileContent) {
+        checkedImportedVariables[name] = false;
+        return false;
       }
 
-      // incase you're not sure, just return true here, so it will continue
-      // return true;
+      const handleExportDeclaration = (
+        node: ExportDefaultDeclaration | ExportNamedDeclaration
+      ) => {
+        let isThisMongoCollection = false;
+        debug("export node", node);
+        switch (node.declaration?.type) {
+          case "Identifier":
+            if (node.declaration.name === name) {
+              if (isMongoCollection(name, importedRootCollection)) {
+                isThisMongoCollection = true;
+              }
+            }
+            break;
+          case "VariableDeclaration": {
+            debug("variable declaration:", node.declaration.declarations);
+            let is;
+            node.declaration.declarations.map((dp) => {
+              if (
+                dp.type === "VariableDeclarator" &&
+                dp.id.type === "Identifier" &&
+                dp.id.name === name
+              ) {
+                switch (dp.init?.type) {
+                  case "Identifier":
+                    // find the variable
+                    if (
+                      isMongoCollection(dp.init.name, importedRootCollection)
+                    ) {
+                      isThisMongoCollection = true;
+                    }
+                    break;
+                  case "NewExpression":
+                    if (isMongoCollection(dp.id.name, importedRootCollection)) {
+                      isThisMongoCollection = true;
+                    }
+                    break;
+                }
+              }
+            });
+            break;
+          }
+          default:
+            debug("Unhandled export declaration type:", node.declaration?.type);
+        }
 
-      debug(`Unrecognized import source ${importPath.value.source.value}`);
+        return isThisMongoCollection;
+      };
+
+      const importedRootCollection = j(fileContent, { parser: tsParser });
+      // debug(
+      //   "imported root collection",
+      //   importedRootCollection,
+      //   importedRootCollection.toSource()
+      // );
+
+      // find the export variable
+      let isExportedMongoCollection = false;
+      switch (importSpec) {
+        case "default":
+          importedRootCollection.find(j.ExportDefaultDeclaration).map((xp) => {
+            debug("export default node:", j(xp).toSource());
+            if (handleExportDeclaration(xp.value)) {
+              isExportedMongoCollection = true;
+            }
+            return null;
+          });
+          break;
+        case "named":
+          importedRootCollection.find(j.ExportNamedDeclaration).map((xp) => {
+            debug("export named node:", j(xp).toSource());
+            if (handleExportDeclaration(xp.value)) {
+              isExportedMongoCollection = true;
+            }
+            return null;
+          });
+          break;
+        default:
+      }
+      checkedImportedVariables[name] = isExportedMongoCollection;
+
+      return isExportedMongoCollection;
     }
+    checkedImportedVariables[name] = false;
+
     return false;
   };
 
@@ -123,7 +224,7 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
         } else {
           debug("Not imported", callee.object.name);
 
-          return isMongoCollection(callee.object.name);
+          return isMongoCollection(callee.object.name, rootCollection);
         }
       }
       case "MemberExpression": {
@@ -160,251 +261,143 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
     return isCursorCall;
   };
 
-  const handleFunctionInsideFunction = (
-    p: ASTPath<
-      FunctionDeclaration | ArrowFunctionExpression | FunctionExpression
-    >,
-    subCollection: Collection
-  ) => {
-    p.value.async = true;
+  // find all Member expression
+  rootCollection.find(j.MemberExpression).map((p) => {
+    // debug("found member expression", p.value);
+    if (p.value.property.type === "Identifier") {
+      switch (p.value.property.name) {
+        case "findOne":
+        case "insert":
+        case "upsert":
+        case "update":
+        case "remove":
+        case "createIndex":
+        case "dropIndex":
+        case "dropCollection": {
+          if (!checkCalleeObject(p.value)) {
+            break;
+          }
 
-    try {
-      debug(
-        "function declaration",
-        j(p.parentPath).toSource()
-        // p.parentPath
-      );
-    } catch (e) {
-      debug("function declaration");
-    }
+          // convert rename property
+          p.value.property.name = methodsMapping[p.value.property.name];
 
-    let functionName;
-    switch (p.value.type) {
-      case "ArrowFunctionExpression":
-        debug("============arrow function expression", p.parentPath);
-        functionName = p.parentPath?.value?.id?.name;
-        break;
-      case "FunctionDeclaration":
-        debug("============function declaration", p.value);
-        functionName = p.value.id?.name;
-        break;
-      case "FunctionExpression":
-        debug("============function expression", p.value);
-        break;
-      default:
-    }
+          const callExpression = findParentCallExpression(p);
+          if (callExpression) {
+            if (addAwaitKeyword(callExpression, j)) {
+              fileChanged = true;
+            }
+            // set parent function async
+            const parentFunction = findParentFunction(callExpression);
+            if (parentFunction) {
+              if (setFunctionAsync(parentFunction)) {
+                fileChanged = true;
+              }
+            }
+          }
 
-    if (!functionName) {
-      return;
-    }
-
-    // find all expressions of this function
-    debug("***find all expressions of this function", functionName);
-    debug(subCollection.toSource());
-    subCollection
-      .find(j.CallExpression, {})
-      .filter(
-        (p2) =>
-          p2.value.callee.type === "Identifier" &&
-          p2.value.callee.name === functionName
-      )
-      .map((p3) => {
-        // debug('p3', p3)
-        addAwaitKeyword(p3, j);
-        return null;
-      });
-  };
-
-  const handleFunctionSubCollection = (subCollection: Collection): boolean => {
-    let needToBeAsync = false;
-
-    // handle function declarations
-    debug("find all functions inside");
-    subCollection.find(j.ArrowFunctionExpression).map((p) => {
-      try {
-        debug("found arrow function", j(p).toSource());
-      } catch (e) {
-        debug("found function");
-      }
-      if (handleFunctionSubCollection(j(p))) {
-        needToBeAsync = true;
-
-        handleFunctionInsideFunction(p, subCollection);
-      }
-      return null;
-    });
-    subCollection.find(j.FunctionExpression).map((p) => {
-      debug("found function expression", j(p).toSource());
-      if (handleFunctionSubCollection(j(p))) {
-        needToBeAsync = true;
-
-        handleFunctionInsideFunction(p, subCollection);
-      }
-      return null;
-    });
-    subCollection.find(j.FunctionDeclaration).map((p) => {
-      debug("found function declaration", j(p).toSource());
-      if (handleFunctionSubCollection(j(p))) {
-        needToBeAsync = true;
-
-        handleFunctionInsideFunction(p, subCollection);
-      }
-      return null;
-    });
-
-    // handle call expressions
-    subCollection.find(j.CallExpression, {}).map((p) => {
-      // debug(j(p).toSource())
-      const { callee } = p.value;
-      switch (callee.type) {
-        case "MemberExpression": {
-          if (callee.property.type === "Identifier") {
-            switch (callee.property.name) {
-              case "findOne":
-              case "insert":
-              case "upsert":
-              case "update":
-              case "remove":
-              case "createIndex":
-              case "dropIndex":
-              case "dropCollection": {
-                if (!checkCalleeObject(callee)) {
-                  break;
-                }
-
-                addAwaitKeyword(p, j);
-                needToBeAsync = true;
-                // convert to findOneAsync
-                callee.property.name = methodsMapping[callee.property.name];
-
+          break;
+        }
+        case "count":
+        case "fetch":
+        case "forEach":
+        case "map": {
+          debug("cursors methods");
+          debug(j(p).toSource());
+          // debug('callee.object', callee.object)
+          switch (p.value.object.type) {
+            case "CallExpression": {
+              // check to make sure we call find() method in the chaining call
+              const preCallee = p.value.object.callee;
+              if (!checkIsCursorPreCallee(preCallee)) {
                 break;
               }
-              case "count":
-              case "fetch":
-              case "forEach":
-              case "map": {
-                debug("cursors methods");
-                debug(j(p).toSource());
-                // debug('callee.object', callee.object)
-                switch (callee.object.type) {
-                  case "CallExpression": {
-                    // check to make sure we call find() method in the chaining call
-                    const preCallee = callee.object.callee;
+
+              // convert rename property
+              p.value.property.name = methodsMapping[p.value.property.name];
+
+              const callExpression = findParentCallExpression(p);
+              if (callExpression) {
+                if (addAwaitKeyword(callExpression, j)) {
+                  fileChanged = true;
+                }
+                // set parent function async
+                const parentFunction = findParentFunction(callExpression);
+                if (parentFunction) {
+                  if (setFunctionAsync(parentFunction)) {
+                    fileChanged = true;
+                  }
+                }
+              }
+
+              break;
+            }
+            case "Identifier": {
+              // find the variable definition, then somehow check to make sure it's returned by calling find() function
+              let isCursorCall = false;
+              const cursorVariableName = p.value.object.name;
+              const variableDeclarator = findVariableDeclarator(
+                cursorVariableName,
+                p,
+                j
+              );
+              // debug("variable declarator", variableDeclarator);
+              if (
+                variableDeclarator &&
+                variableDeclarator.value.type === "VariableDeclarator"
+              ) {
+                switch (variableDeclarator.value.init?.type) {
+                  case "CallExpression":
+                    const preCallee = variableDeclarator.value.init.callee;
+                    // debug('pre callee', preCallee)
                     if (!checkIsCursorPreCallee(preCallee)) {
                       break;
                     }
 
-                    addAwaitKeyword(p, j);
-                    needToBeAsync = true;
-                    // convert to findOneAsync
-                    callee.property.name = methodsMapping[callee.property.name];
+                    isCursorCall = true;
 
                     break;
-                  }
-                  case "Identifier": {
-                    // find the variable definition, then somehow check to make sure it's returned by calling find() function
-                    let isCursorCall = false;
-                    const cursorVariableName = callee.object.name;
-                    subCollection
-                      .findVariableDeclarators(cursorVariableName)
-                      .at(0)
-                      .map((cursorDeclarePath) => {
-                        // debug(
-                        //   `cursor declare for ${cursorVariableName}`,
-                        //   cursorDeclarePath.value
-                        // )
-                        debug(j(cursorDeclarePath).toSource());
-                        if (
-                          cursorDeclarePath.value.type === "VariableDeclarator"
-                        ) {
-                          switch (cursorDeclarePath.value.init?.type) {
-                            case "CallExpression":
-                              const preCallee =
-                                cursorDeclarePath.value.init.callee;
-                              // debug('pre callee', preCallee)
-                              if (!checkIsCursorPreCallee(preCallee)) {
-                                break;
-                              }
-
-                              isCursorCall = true;
-
-                              break;
-                            default:
-                              debug(
-                                `Unhandled cursor declaration init type ${cursorDeclarePath.value.init?.type}`
-                              );
-                              break;
-                          }
-                        }
-
-                        return null;
-                      });
-
-                    if (isCursorCall) {
-                      addAwaitKeyword(p, j);
-                      needToBeAsync = true;
-                      // convert to findOneAsync
-                      callee.property.name =
-                        methodsMapping[callee.property.name];
-                    }
-
-                    break;
-                  }
                   default:
                     debug(
-                      `Unhanded cursors method: ${callee.property.name} with callee object type is ${callee.object.type}`
+                      `Unhandled cursor declaration init type ${variableDeclarator.value.init?.type}`
                     );
                     break;
                 }
-                // debug('cursors methods', callee.property.name, p.value)
-
-                break;
               }
-              default:
-                debug("Unhandled callee property", callee.property.name);
+
+              if (isCursorCall) {
+                const callExpression = findParentCallExpression(p);
+                if (callExpression) {
+                  // convert rename property
+                  p.value.property.name = methodsMapping[p.value.property.name];
+
+                  if (addAwaitKeyword(callExpression, j)) {
+                    fileChanged = true;
+                  }
+                  // set parent function async
+                  const parentFunction = findParentFunction(callExpression);
+                  if (parentFunction) {
+                    if (setFunctionAsync(parentFunction)) {
+                      fileChanged = true;
+                    }
+                  }
+                }
+              }
+
+              break;
             }
-          } else {
-            debug("Unhandled callee type 2", callee);
+            default:
+              debug(
+                `Unhanded cursors method: ${p.value.property.name} with callee object type is ${p.value.object.type}`
+              );
+              break;
           }
+          // debug('cursors methods', callee.property.name, p.value)
+
           break;
         }
         default:
-        // debug('Unhandled callee type', callee)
+          debug("Unhandled callee property", p.value.property.name);
       }
-      return null;
-    });
-    return needToBeAsync;
-  };
-
-  // Just works with functions
-  rootCollection.find(j.ArrowFunctionExpression).map((p) => {
-    debug("Found function", j(p.value).toSource());
-    if (handleFunctionSubCollection(j(p))) {
-      p.value.async = true;
-    }
-
-    return null;
-  });
-  rootCollection.find(j.FunctionExpression).map((p) => {
-    debug("Found function", j(p.value).toSource());
-    if (handleFunctionSubCollection(j(p))) {
-      p.value.async = true;
-    }
-
-    return null;
-  });
-  rootCollection.find(j.FunctionDeclaration).map((p) => {
-    debug("Found function", j(p.value).toSource());
-    if (handleFunctionSubCollection(j(p))) {
-      p.value.async = true;
-    }
-
-    return null;
-  });
-  rootCollection.find(j.ObjectMethod).map((p) => {
-    debug("Found function", j(p.value).toSource());
-    if (handleFunctionSubCollection(j(p))) {
-      p.value.async = true;
     }
 
     return null;
@@ -412,5 +405,8 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
 
   debug("**************************************************");
 
-  return rootCollection.toSource();
+  if (fileChanged) {
+    debug2("file changed:", fileInfo.path);
+    return rootCollection.toSource();
+  }
 };

@@ -1,5 +1,6 @@
 /**
  * Find all codes like Promise.all(SOME_VAR.forEach())
+ * It won't modify your file
  */
 
 import {
@@ -88,5 +89,5 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
     return null;
   });
 
-  return rootCollection.toSource();
+  return undefined;
 };

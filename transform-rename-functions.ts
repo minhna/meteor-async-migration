@@ -55,6 +55,7 @@ const methodsMapping: MethodsMappingItemType[] = [
 ];
 
 const debug = require("debug")("transform:script-rename");
+const debug2 = require("debug")("transform:print:script-rename");
 
 module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
   debug(
@@ -62,6 +63,8 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
 *** ${fileInfo.path}
 **************************************************`
   );
+  let fileChanged = false;
+
   const rootCollection = j(fileInfo.source);
   // debug(rootCollection)
 
@@ -125,6 +128,7 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
     );
     debug("+++by this", j(byNode.value).toSource());
     j(replaceThisPath).replaceWith(byNode.value);
+    fileChanged = true;
 
     // increase the counter
     replaceCounter += 1;
@@ -134,17 +138,23 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
       // find the parent function
       const parentFunctionPath = findParentFunction(replaceThisPath);
       if (parentFunctionPath) {
-        setFunctionAsync(parentFunctionPath);
+        if (setFunctionAsync(parentFunctionPath)) {
+          fileChanged = true;
+        }
         // then find all functions which use this async function
         switch (parentFunctionPath.value.type) {
           case "FunctionDeclaration": {
             debug("+++the parent", parentFunctionPath.value?.id?.loc?.start);
             if (parentFunctionPath.value.id?.type === "Identifier") {
-              convertAllCallExpressionToAsync(
-                parentFunctionPath.value.id?.name,
-                rootCollection,
-                j
-              );
+              if (
+                convertAllCallExpressionToAsync(
+                  parentFunctionPath.value.id?.name,
+                  rootCollection,
+                  j
+                )
+              ) {
+                fileChanged = true;
+              }
             }
             break;
           }
@@ -232,5 +242,8 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
 
   debug("**************************************************");
 
-  return rootCollection.toSource();
+  if (fileChanged) {
+    debug2("file changed:", fileInfo.path);
+    return rootCollection.toSource();
+  }
 };

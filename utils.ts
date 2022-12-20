@@ -1,4 +1,5 @@
 import { ASTPath, CallExpression, JSCodeshift, Collection } from "jscodeshift";
+import fs from "fs";
 
 const debug = require("debug")("transform:utils");
 
@@ -184,4 +185,38 @@ export const getFunctionLocation = (p: ASTPath) => {
     default:
       debug("Unhandled function type:", p.value.type);
   }
+};
+
+export const getFileContent = (path: string): string | undefined => {
+  let fileContent: Buffer | null = null;
+
+  if (/(\.js|\.ts)$/.test(path)) {
+    try {
+      fileContent = fs.readFileSync(path);
+    } catch (e) {
+      debug("File was not found:", path);
+    }
+  } else {
+    try {
+      fileContent = fs.readFileSync(path + ".js");
+    } catch (e) {
+      try {
+        fileContent = fs.readFileSync(path + ".ts");
+      } catch (e2) {
+        // check for index file
+        try {
+          fileContent = fs.readFileSync(path + "/index.js");
+        } catch (e3) {
+          try {
+            fileContent = fs.readFileSync(path + "/index.ts");
+          } catch (e4) {
+            debug("File was not found");
+          }
+        }
+      }
+    }
+  }
+
+  // debug("content", fileContent.toString());
+  return fileContent?.toString();
 };

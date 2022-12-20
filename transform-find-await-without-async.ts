@@ -4,7 +4,7 @@
  */
 
 import { FileInfo, API, Options } from "jscodeshift";
-import { findParentFunction, getFunctionLocation } from "./utils";
+import { findParentFunction } from "./utils";
 
 const debug = require("debug")("transform:find-await-without-async");
 const debug2 = require("debug")("transform:print:find-await-without-async");

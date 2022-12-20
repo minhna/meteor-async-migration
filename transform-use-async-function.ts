@@ -7,33 +7,16 @@
 import fs from "fs";
 6;
 
-import {
-  FileInfo,
-  API,
-  Options,
-  ASTPath,
-  CallExpression,
-  ExportDefaultDeclaration,
-  ExportNamedDeclaration,
-  AwaitExpression,
-  Collection,
-} from "jscodeshift";
-
-const tsParser = require("jscodeshift/parser/ts");
+import { FileInfo, API, Options } from "jscodeshift";
 
 const debug = require("debug")("transform:use-async-function");
 const debug2 = require("debug")("transform:print:use-async-function");
 
 import {
-  addAwaitKeyword,
   convertAllCallExpressionToAsync,
   convertAllMemberExpressionCallToAsync,
-  findParentFunction,
   findParentObject,
-  setFunctionAsync,
 } from "./utils";
-
-const METEOR_ROOT_DIRECTORY = "/home/minhna/WORKS/Mike/settler/se2-admin";
 
 module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
   debug(

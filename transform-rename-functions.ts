@@ -9,13 +9,8 @@ import {
   API,
   Options,
   ASTPath,
-  Collection,
-  MemberExpression,
   CallExpression,
   ExpressionStatement,
-  FunctionDeclaration,
-  ArrowFunctionExpression,
-  FunctionExpression,
 } from "jscodeshift";
 
 import * as recast from "recast";
@@ -25,14 +20,6 @@ import {
   findParentFunction,
   setFunctionAsync,
 } from "./utils";
-
-type MethodDescType = {
-  type: string;
-  objectName?: string;
-  propertyName?: string;
-  functionName?: string;
-  await?: boolean;
-};
 
 type MethodsMappingItemType = {
   from: string;

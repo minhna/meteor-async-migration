@@ -7,33 +7,21 @@
  * 6. Convert them to await expressions
  */
 
-import fs from "fs";
-
 import {
   FileInfo,
   API,
   Options,
-  ASTPath,
-  CallExpression,
   ExportDefaultDeclaration,
   ExportNamedDeclaration,
-  AwaitExpression,
-  Collection,
 } from "jscodeshift";
+import CONSTANTS from "./constants";
 
 const tsParser = require("jscodeshift/parser/ts");
 
 const debug = require("debug")("transform:export-async-script");
 const debug2 = require("debug")("transform:print:export-async-script");
 
-import {
-  addAwaitKeyword,
-  convertAllCallExpressionToAsync,
-  findParentFunction,
-  setFunctionAsync,
-} from "./utils";
-
-const METEOR_ROOT_DIRECTORY = "/home/minhna/WORKS/Mike/settler/se2-admin";
+import { convertAllCallExpressionToAsync, getFileContent } from "./utils";
 
 module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
   debug(
@@ -52,43 +40,9 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
 
   const getRealImportSource = (source: string): string => {
     if (/^\//.test(source)) {
-      return METEOR_ROOT_DIRECTORY + source;
+      return CONSTANTS.METEOR_ROOT_DIRECTORY + source;
     }
     return getPathFromSource(fileInfo.path) + "/" + source.replace(/^\.\//, "");
-  };
-
-  const getFileContent = (path: string): string | undefined => {
-    let fileContent: Buffer | null = null;
-
-    if (/(\.js|\.ts)$/.test(path)) {
-      try {
-        fileContent = fs.readFileSync(path);
-      } catch (e) {
-        debug("File was not found:", path);
-      }
-    } else {
-      try {
-        fileContent = fs.readFileSync(path + ".js");
-      } catch (e) {
-        try {
-          fileContent = fs.readFileSync(path + ".ts");
-        } catch (e2) {
-          // check for index file
-          try {
-            fileContent = fs.readFileSync(path + "/index.js");
-          } catch (e3) {
-            try {
-              fileContent = fs.readFileSync(path + "/index.ts");
-            } catch (e4) {
-              debug("File was not found");
-            }
-          }
-        }
-      }
-    }
-
-    // debug("content", fileContent.toString());
-    return fileContent?.toString();
   };
 
   // function to read the export source file, then check for exported async function

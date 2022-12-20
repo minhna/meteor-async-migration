@@ -4,39 +4,9 @@
  * 3. If there wasn't any await expression, then remove async from function expression.
  */
 
-import {
-  FileInfo,
-  API,
-  Options,
-  ASTPath,
-  Collection,
-  MemberExpression,
-  CallExpression,
-  ExpressionStatement,
-  FunctionDeclaration,
-  ArrowFunctionExpression,
-  FunctionExpression,
-  Position,
-} from "jscodeshift";
-
-const methodsMapping = {
-  findOne: "findOneAsync",
-  insert: "insertAsync",
-  upsert: "upsertAsync",
-  update: "updateAsync",
-  remove: "removeAsync",
-  createIndex: "createIndexAsync",
-  dropIndex: "dropIndexAsync",
-  dropCollection: "dropCollectionAsync",
-  // methods on cursors
-  count: "countAsync",
-  fetch: "fetchAsync",
-  forEach: "forEachAsync",
-  map: "mapAsync",
-};
+import { FileInfo, API, Options, ASTPath } from "jscodeshift";
 
 import {
-  addAwaitKeyword,
   findParentFunction,
   getFunctionLocation,
   setFunctionNotAsync,

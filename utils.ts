@@ -6,12 +6,13 @@ export const addAwaitKeyword = (p: ASTPath<CallExpression>, j: JSCodeshift) => {
   // debug('need add await', j(p).toSource(), p)
   if (p.parentPath?.value.type === "AwaitExpression") {
     debug("already has await expression");
-    return;
+    return false;
   }
   const awaitNode = j.awaitExpression(p.value);
   debug(j(awaitNode).toSource());
   debug(j(p.value).toSource());
   j(p).replaceWith(awaitNode);
+  return true;
 };
 
 export const findParentFunction = (p: ASTPath): ASTPath | undefined => {
@@ -64,8 +65,13 @@ export const setFunctionAsync = (p: ASTPath) => {
     p.value.type === "ObjectMethod"
   ) {
     debug("set function async", p.value.loc?.start);
+    if (p.value.async === true) {
+      return false;
+    }
     p.value.async = true;
+    return true;
   }
+  return false;
 };
 
 export const setFunctionNotAsync = (p: ASTPath) => {
@@ -76,8 +82,13 @@ export const setFunctionNotAsync = (p: ASTPath) => {
     p.value.type === "ObjectMethod"
   ) {
     debug("set function async", p.value.loc?.start);
+    if (p.value.async === false) {
+      return false;
+    }
     p.value.async = false;
+    return true;
   }
+  return false;
 };
 
 export const convertAllCallExpressionToAsync = (
@@ -89,6 +100,7 @@ export const convertAllCallExpressionToAsync = (
     `convert all functions use the async function which has the name is ${name} to async:`
   );
   // find all function call then add await to
+  let changed = false;
   collection
     .find(j.CallExpression, {})
     .filter(
@@ -96,14 +108,20 @@ export const convertAllCallExpressionToAsync = (
         p2.value.callee.type === "Identifier" && p2.value.callee.name === name
     )
     .map((p3) => {
-      addAwaitKeyword(p3, j);
+      if (addAwaitKeyword(p3, j)) {
+        changed = true;
+      }
       const parentFunctionPath = findParentFunction(p3);
       // debug("parent function path", parentFunctionPath?.value);
       if (parentFunctionPath) {
-        setFunctionAsync(parentFunctionPath);
+        // TODO: check if this followed by .then expression
+        if (setFunctionAsync(parentFunctionPath)) {
+          changed = true;
+        }
       }
       return null;
     });
+  return changed;
 };
 
 export const convertAllMemberExpressionCallToAsync = (
@@ -115,6 +133,7 @@ export const convertAllMemberExpressionCallToAsync = (
   debug(
     `convert all functions use the async function ${objectName}.${propertyName}() to async:`
   );
+  let changed = false;
   // find all function call then add await to
   collection.find(j.CallExpression, {}).map((p) => {
     // debug("call expression:", p.value.callee);
@@ -127,16 +146,22 @@ export const convertAllMemberExpressionCallToAsync = (
         calleeProperty.name === propertyName
       ) {
         // debug("add await expression", p);
-        addAwaitKeyword(p, j);
+        if (addAwaitKeyword(p, j)) {
+          changed = true;
+        }
         const parentFunctionPath = findParentFunction(p);
         // debug("parent function path", parentFunctionPath?.value);
         if (parentFunctionPath) {
-          setFunctionAsync(parentFunctionPath);
+          // TODO: check if this followed by .then expression
+          if (setFunctionAsync(parentFunctionPath)) {
+            changed = true;
+          }
         }
       }
     }
     return null;
   });
+  return changed;
 };
 
 export const getFunctionLocation = (p: ASTPath) => {

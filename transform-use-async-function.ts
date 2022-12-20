@@ -22,6 +22,7 @@ import {
 const tsParser = require("jscodeshift/parser/ts");
 
 const debug = require("debug")("transform:use-async-function");
+const debug2 = require("debug")("transform:print:use-async-function");
 
 import {
   addAwaitKeyword,
@@ -40,6 +41,7 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
 *** ${fileInfo.path}
 **************************************************\n`
   );
+  let fileChanged = false;
 
   const rootCollection = j(fileInfo.source);
 
@@ -56,7 +58,11 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
             // const theVariable = theValue;
             if (d.id.type === "Identifier") {
               debug("convert to async/await:", d.id.name);
-              convertAllCallExpressionToAsync(d.id.name, rootCollection, j);
+              if (
+                convertAllCallExpressionToAsync(d.id.name, rootCollection, j)
+              ) {
+                fileChanged = true;
+              }
             }
           }
 
@@ -74,12 +80,16 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
                 dp.key.type === "Identifier"
               ) {
                 debug("convert to async/await:", objectName);
-                convertAllMemberExpressionCallToAsync(
-                  objectName,
-                  dp.key.name,
-                  rootCollection,
-                  j
-                );
+                if (
+                  convertAllMemberExpressionCallToAsync(
+                    objectName,
+                    dp.key.name,
+                    rootCollection,
+                    j
+                  )
+                ) {
+                  fileChanged = true;
+                }
               }
             });
           }
@@ -97,7 +107,11 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
         debug("FunctionDeclaration", p.value.id?.loc?.start);
         if (p.value.async && p.value.id?.name) {
           debug("async function name:", p.value.id.name);
-          convertAllCallExpressionToAsync(p.value.id?.name, rootCollection, j);
+          if (
+            convertAllCallExpressionToAsync(p.value.id?.name, rootCollection, j)
+          ) {
+            fileChanged = true;
+          }
           findVariableAssignments(p.value.id?.name);
         }
         break;
@@ -108,11 +122,15 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
           switch (p.parentPath.value.type) {
             case "VariableDeclarator":
               debug("async function name:", p.parentPath.value.id.name);
-              convertAllCallExpressionToAsync(
-                p.parentPath.value.id.name,
-                rootCollection,
-                j
-              );
+              if (
+                convertAllCallExpressionToAsync(
+                  p.parentPath.value.id.name,
+                  rootCollection,
+                  j
+                )
+              ) {
+                fileChanged = true;
+              }
               findVariableAssignments(p.parentPath.value.id.name);
               break;
             case "ObjectProperty": {
@@ -124,12 +142,16 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
                 parentObject.value.id.type === "Identifier"
               ) {
                 debug("object name:", parentObject.value.id.name);
-                convertAllMemberExpressionCallToAsync(
-                  parentObject.value.id.name,
-                  p.parentPath.value.key.name,
-                  rootCollection,
-                  j
-                );
+                if (
+                  convertAllMemberExpressionCallToAsync(
+                    parentObject.value.id.name,
+                    p.parentPath.value.key.name,
+                    rootCollection,
+                    j
+                  )
+                ) {
+                  fileChanged = true;
+                }
               }
               break;
             }
@@ -144,5 +166,8 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
     return null;
   });
 
-  return rootCollection.toSource();
+  if (fileChanged) {
+    debug2("file changed: ", fileInfo.path);
+    return rootCollection.toSource();
+  }
 };

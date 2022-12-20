@@ -99,12 +99,13 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
     });
   };
 
-  // find all async function definitions
+  // find all function definitions
   rootCollection.find(j.Function).map((p) => {
     // debug("Function", p.value);
     switch (p.value.type) {
       case "FunctionDeclaration":
         debug("FunctionDeclaration", p.value.id?.loc?.start);
+        // check if async function
         if (p.value.async && p.value.id?.name) {
           debug("async function name:", p.value.id.name);
           if (
@@ -118,6 +119,7 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
       case "ArrowFunctionExpression":
       case "FunctionExpression":
         debug("Function Expression", p.value.loc?.start);
+        // check if async function
         if (p.value.async) {
           switch (p.parentPath.value.type) {
             case "VariableDeclarator":
@@ -160,6 +162,14 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
           }
         }
         break;
+      // case "ClassMethod":
+      //   debug("ClassMethod", p.value.loc?.start);
+      //   debug("p.value", p.value);
+      //   // check if async function
+      //   if (p.value.async) {
+
+      //   }
+      //   break;
       default:
         debug("Unhandled function type:", p.value.type);
     }

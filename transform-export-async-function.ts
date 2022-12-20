@@ -24,6 +24,7 @@ import {
 const tsParser = require("jscodeshift/parser/ts");
 
 const debug = require("debug")("transform:export-async-script");
+const debug2 = require("debug")("transform:print:export-async-script");
 
 import {
   addAwaitKeyword,
@@ -40,6 +41,8 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
 *** ${fileInfo.path}
 **************************************************\n`
   );
+
+  let fileChanged = false;
 
   const rootCollection = j(fileInfo.source);
 
@@ -241,11 +244,15 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
                 });
                 debug("==>is async function:", isAsyncFunction);
                 if (isAsyncFunction) {
-                  convertAllCallExpressionToAsync(
-                    spec.local.name,
-                    rootCollection,
-                    j
-                  );
+                  if (
+                    convertAllCallExpressionToAsync(
+                      spec.local.name,
+                      rootCollection,
+                      j
+                    )
+                  ) {
+                    fileChanged = true;
+                  }
                 }
               }
               break;
@@ -263,11 +270,15 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
                 });
                 debug("==>is async function:", isAsyncFunction);
                 if (isAsyncFunction) {
-                  convertAllCallExpressionToAsync(
-                    spec.local.name,
-                    rootCollection,
-                    j
-                  );
+                  if (
+                    convertAllCallExpressionToAsync(
+                      spec.local.name,
+                      rootCollection,
+                      j
+                    )
+                  ) {
+                    fileChanged = true;
+                  }
                 }
               }
               break;
@@ -282,5 +293,8 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
     return null;
   });
 
-  return rootCollection.toSource();
+  if (fileChanged) {
+    debug2("file changed:", fileInfo.path);
+    return rootCollection.toSource();
+  }
 };

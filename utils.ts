@@ -19,7 +19,7 @@ export const findParentFunction = (p: ASTPath): ASTPath | undefined => {
   if (!p.parentPath) {
     return undefined;
   }
-  // debug("find parent function of this", p);
+  debug("find parent function of this", p);
 
   // debug("parent", p.parentPath.value?.loc?.start);
   if (
@@ -28,6 +28,7 @@ export const findParentFunction = (p: ASTPath): ASTPath | undefined => {
       "FunctionExpression",
       "FunctionDeclaration",
       "ObjectMethod",
+      "ClassMethod",
     ].includes(p.parentPath.value.type)
   ) {
     return p.parentPath;
@@ -62,7 +63,8 @@ export const setFunctionAsync = (p: ASTPath) => {
     p.value.type === "ArrowFunctionExpression" ||
     p.value.type === "FunctionDeclaration" ||
     p.value.type === "FunctionExpression" ||
-    p.value.type === "ObjectMethod"
+    p.value.type === "ObjectMethod" ||
+    p.value.type === "ClassMethod"
   ) {
     debug("set function async", p.value.loc?.start);
     if (p.value.async === true) {
@@ -79,7 +81,8 @@ export const setFunctionNotAsync = (p: ASTPath) => {
     p.value.type === "ArrowFunctionExpression" ||
     p.value.type === "FunctionDeclaration" ||
     p.value.type === "FunctionExpression" ||
-    p.value.type === "ObjectMethod"
+    p.value.type === "ObjectMethod" ||
+    p.value.type === "ClassMethod"
   ) {
     debug("set function async", p.value.loc?.start);
     if (p.value.async === false) {
@@ -170,6 +173,7 @@ export const getFunctionLocation = (p: ASTPath) => {
     case "FunctionDeclaration":
     case "FunctionExpression":
     case "ObjectMethod":
+    case "ClassMethod":
       if (p.value.loc) {
         return {
           start: p.value.loc?.start,

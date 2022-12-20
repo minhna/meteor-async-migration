@@ -43,6 +43,7 @@ import {
 } from "./utils";
 
 const debug = require("debug")("transform:fix-async-overly");
+const debug2 = require("debug")("transform:print:fix-async-overly");
 
 module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
   debug(
@@ -50,6 +51,8 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
 *** ${fileInfo.path}
 **************************************************`
   );
+  let fileChanged = false;
+
   const rootCollection = j(fileInfo.source);
   // debug(rootCollection)
 
@@ -81,7 +84,9 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
     debug("found await:", foundAwait);
     if (!foundAwait) {
       // remove async from function expression
-      setFunctionNotAsync(p);
+      if (setFunctionNotAsync(p)) {
+        fileChanged = true;
+      }
     }
   };
 
@@ -110,8 +115,17 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
     }
     return null;
   });
+  rootCollection.find(j.ClassMethod).map((p) => {
+    if (p.value.async) {
+      checkIfAsyncNeeded(p);
+    }
+    return null;
+  });
 
   debug("**************************************************");
 
-  return rootCollection.toSource();
+  if (fileChanged) {
+    debug2("file changed:", fileInfo.path);
+    return rootCollection.toSource();
+  }
 };

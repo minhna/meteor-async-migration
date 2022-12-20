@@ -1,5 +1,6 @@
 import { ASTPath, CallExpression, JSCodeshift, Collection } from "jscodeshift";
 import fs from "fs";
+import CONSTANTS from "./constants";
 
 const debug = require("debug")("transform:utils");
 
@@ -219,4 +220,18 @@ export const getFileContent = (path: string): string | undefined => {
 
   // debug("content", fileContent.toString());
   return fileContent?.toString();
+};
+
+export const getPathFromSource = (source: string): string => {
+  return source.replace(/\/([^\/]+)$/, "");
+};
+
+export const getRealImportSource = (
+  importPath: string,
+  currentPath: string
+): string => {
+  if (/^\//.test(importPath)) {
+    return CONSTANTS.METEOR_ROOT_DIRECTORY + importPath;
+  }
+  return getPathFromSource(currentPath) + "/" + importPath.replace(/^\.\//, "");
 };

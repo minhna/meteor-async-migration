@@ -14,14 +14,17 @@ import {
   ExportDefaultDeclaration,
   ExportNamedDeclaration,
 } from "jscodeshift";
-import CONSTANTS from "./constants";
 
 const tsParser = require("jscodeshift/parser/ts");
 
 const debug = require("debug")("transform:export-async-script");
 const debug2 = require("debug")("transform:print:export-async-script");
 
-import { convertAllCallExpressionToAsync, getFileContent } from "./utils";
+import {
+  convertAllCallExpressionToAsync,
+  getFileContent,
+  getRealImportSource,
+} from "./utils";
 
 module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
   debug(
@@ -33,17 +36,6 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
   let fileChanged = false;
 
   const rootCollection = j(fileInfo.source);
-
-  const getPathFromSource = (source: string): string => {
-    return source.replace(/\/([^\/]+)$/, "");
-  };
-
-  const getRealImportSource = (source: string): string => {
-    if (/^\//.test(source)) {
-      return CONSTANTS.METEOR_ROOT_DIRECTORY + source;
-    }
-    return getPathFromSource(fileInfo.path) + "/" + source.replace(/^\.\//, "");
-  };
 
   // function to read the export source file, then check for exported async function
   interface AnalyzeSourceParams {
@@ -59,7 +51,7 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
     debug("===analyze source begin:", exportType, exportedFunction, fileSource);
 
     // open file to read
-    const realImportSource = getRealImportSource(fileSource);
+    const realImportSource = getRealImportSource(fileSource, fileInfo.path);
     debug({ realImportSource });
 
     const fileContent = getFileContent(realImportSource);

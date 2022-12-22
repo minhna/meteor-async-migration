@@ -1,4 +1,8 @@
 import React from "react";
+import FirstExported, {
+  SecondExported,
+  ThirdExported,
+} from "./react-component-export";
 
 const async1 = async () => {};
 
@@ -36,10 +40,12 @@ export const SecondComponent = () => {
         as1={async1}
         as2={async2}
         as3={async () => {}}
-        as4={function () {}}
+        f4={function () {}}
         {...props}
       />
-      ;
+      <FirstExported as1={async1} as2={async2} {...props} />
+      <SecondExported as1={async1} />
+      <ThirdExported as2={async2} />
     </div>
   );
 };

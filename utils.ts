@@ -7,6 +7,7 @@ import {
   VariableDeclarator,
   JSXElement,
   SourceLocation,
+  ImportDeclaration,
 } from "jscodeshift";
 import fs from "fs";
 import CONSTANTS from "./constants";
@@ -209,6 +210,31 @@ export const findVariableDeclarator = (
   }
 
   return declarator;
+};
+
+export const findImportNodeByVariableName = (
+  name: string,
+  rootCollection: Collection,
+  j: JSCodeshift
+) => {
+  let importNode: ImportDeclaration | undefined;
+  // find all imported async functions
+  const importedNodes = rootCollection.find(j.ImportDeclaration);
+  importedNodes.map((p) => {
+    debug("imported node source:", j(p).toSource());
+    p.value.specifiers?.map((spec) => {
+      if (
+        spec.local?.name === name &&
+        typeof p.value.source.value === "string"
+      ) {
+        importNode = p.value;
+      }
+      return null;
+    });
+    return null;
+  });
+
+  return importNode;
 };
 
 export const setFunctionAsync = (p: ASTPath) => {
@@ -463,7 +489,7 @@ export const getComponentProps = (p: ASTPath<JSXElement>, j: JSCodeshift) => {
                   );
                   debug("____attribute variable:", variable);
                   if (variable) {
-                    props[propName] = variable;
+                    props[propName] = variable.value.init;
                   }
 
                   break;

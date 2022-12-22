@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { BExported } from "./react-component-other-export";
+import { BExported, FirstContext } from "./react-component-other-export";
 
 const FirstExported = ({ as1, as2, ...rest }) => {
   as1();
@@ -18,12 +18,22 @@ export function SecondExported({ as1 }) {
 }
 
 export const ThirdExported = function ({ as2 }) {
-  as2();
+  const { cas1 } = React.useContext(FirstContext);
+  const { cas2: cas2Renamed } = useContext(FirstContext);
+
+  useEffect(() => {
+    as2();
+  }, []);
+
+  const handleClick = () => {
+    cas1();
+    cas2Renamed();
+  };
 
   return (
     <div>
       <h1>third exported</h1>
-      <BExported as2={as2} />
+      <BExported as2={as2} cas1={cas1} />
     </div>
   );
 };

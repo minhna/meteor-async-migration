@@ -34,7 +34,7 @@ export const SecondComponent = () => {
 
   return (
     <div>
-      <FirstComponent
+      {/* <FirstComponent
         a='A'
         b='B'
         as1={async1}
@@ -44,7 +44,7 @@ export const SecondComponent = () => {
         {...props}
       />
       <FirstExported as1={async1} as2={async2} {...props} />
-      <SecondExported as1={async1} />
+      <SecondExported as1={async1} /> */}
       <ThirdExported as2={async2} />
     </div>
   );

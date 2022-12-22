@@ -25,6 +25,7 @@ const debug = require("debug")("transform:component-props");
 const debug2 = require("debug")("transform:print:component-props");
 
 import {
+  ComponentPropsType,
   convertAllCallExpressionToAsync,
   findImportNodeByVariableName,
   findVariableDeclarator,
@@ -55,10 +56,9 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
   const handleComponent = (
     componentName: string,
     filePath: string,
-    props: { [key: string]: any }
+    props: ComponentPropsType
   ) => {
     debug("[handleComponent] BEGIN:", componentName, filePath);
-    // TODO: works with react context
 
     const { content: fileContent, realPath } = getFileContent(filePath);
     // debug("content\n", fileContent);
@@ -75,6 +75,7 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
     let componentParams: Pattern[] | undefined;
     let componentPath: ASTPath | undefined;
     let componentBody: BlockStatement | ExpressionKind | undefined;
+
     // first, find by variable name
     componentRootCollection.findVariableDeclarators(componentName).map((p) => {
       debug("[handleComponent] variable found at:", p.value.loc?.start);
@@ -106,13 +107,80 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
       });
     }
 
-    // debug("[handleComponent] componentParams", componentParams);
+    debug("[handleComponent] componentParams", componentParams);
     // debug("[handleComponent] componentBody", componentBody);
 
     if (!componentPath) {
       return;
     }
 
+    // TODO: works with react context
+    // find all useContext call
+    j(componentPath)
+      .find(j.CallExpression)
+      .map((p) => {
+        // debug("[handleComponent] _finding useContext:", p.value);
+        let contextName: string | undefined;
+        switch (p.value.callee.type) {
+          case "MemberExpression": {
+            if (
+              p.value.callee.property.type === "Identifier" &&
+              p.value.callee.property.name === "useContext"
+            ) {
+              debug("[handleComponent] _found useContext:", p.value.loc?.start);
+              // debug("[handleComponent]", p.value);
+              if (p.value.arguments[0].type === "Identifier") {
+                contextName = p.value.arguments[0].name;
+              }
+            }
+            break;
+          }
+          case "Identifier": {
+            if (p.value.callee.name === "useContext") {
+              debug("[handleComponent] _found useContext:", p.value.loc?.start);
+              // debug("[handleComponent]", p.value);
+              if (p.value.arguments[0].type === "Identifier") {
+                contextName = p.value.arguments[0].name;
+              }
+            }
+            break;
+          }
+        }
+        if (!contextName) {
+          return null;
+        }
+
+        debug("[handleComponent] _context name:", contextName);
+        debug("[handleComponent] _context usage parent path:", p.parentPath);
+        const extractedContextVariables: { [key: string]: string } = {};
+        if (p.parentPath.value.type === "VariableDeclarator") {
+          if (p.parentPath.value.id.type === "ObjectPattern") {
+            debug(
+              "[handleComponent] _properties",
+              p.parentPath.value.id.properties
+            );
+            p.parentPath.value.id.properties.map((property) => {
+              if (property.type === "ObjectProperty") {
+                if (
+                  property.key.type === "Identifier" &&
+                  property.value.type === "Identifier"
+                ) {
+                  extractedContextVariables[property.value.name] =
+                    property.key.name;
+                }
+              }
+            });
+          }
+        }
+        debug(
+          "[handleComponent] extractedContextVariables:",
+          extractedContextVariables
+        );
+
+        return null;
+      });
+
+    // works with component's params
     if (componentParams && componentParams.length > 0) {
       // find in props all async function
       Object.keys(props).map((propKey) => {

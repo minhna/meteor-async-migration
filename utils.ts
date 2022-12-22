@@ -453,13 +453,19 @@ export const isMongoCollection = (name: string, collection: Collection) => {
   return result;
 };
 
-export const getComponentProps = (p: ASTPath<JSXElement>, j: JSCodeshift) => {
+export type ComponentPropsType = { [key: string]: any };
+
+export const getComponentProps = (
+  p: ASTPath<JSXElement>,
+  j: JSCodeshift,
+  parentComponentProps?: ComponentPropsType
+) => {
   debug("_BEGIN getComponentProps");
 
   const { attributes } = p.value.openingElement;
   debug("_attributes", attributes);
 
-  let props: { [key: string]: any } = {};
+  let props: ComponentPropsType = {};
 
   attributes?.map((att) => {
     switch (att.type) {
@@ -491,14 +497,26 @@ export const getComponentProps = (p: ASTPath<JSXElement>, j: JSCodeshift) => {
                   // e.g: <Component someProp={someVar} />
                   debug("____attribute variable name:", expression.name);
                   // now find the variable, check if it was async function
-                  const variable = findVariableDeclarator(
-                    expression.name,
-                    p,
-                    j
-                  );
-                  debug("____attribute variable:", variable);
-                  if (variable) {
-                    props[propName] = variable.value.init;
+                  // first, find in parent component props
+                  if (
+                    parentComponentProps &&
+                    parentComponentProps[expression.name]
+                  ) {
+                    debug(
+                      "____found in parent component props:",
+                      parentComponentProps[expression.name]
+                    );
+                    props[propName] = parentComponentProps[expression.name];
+                  } else {
+                    const variable = findVariableDeclarator(
+                      expression.name,
+                      p,
+                      j
+                    );
+                    debug("____attribute variable:", variable);
+                    if (variable) {
+                      props[propName] = variable.value.init;
+                    }
                   }
 
                   break;
@@ -530,6 +548,20 @@ export const getComponentProps = (p: ASTPath<JSXElement>, j: JSCodeshift) => {
         switch (att.argument.type) {
           case "Identifier": {
             // e.g: {...props}
+            // first, find in the parent component props
+            if (
+              parentComponentProps &&
+              parentComponentProps[att.argument.name]
+            ) {
+              debug(
+                "____found in parent component props:",
+                parentComponentProps[att.argument.name]
+              );
+              props = { ...props, ...parentComponentProps[att.argument.name] };
+
+              break;
+            }
+
             const bigProps = findVariableDeclarator(att.argument.name, p, j);
             if (bigProps) {
               debug("___found spread attribute variable:", bigProps);

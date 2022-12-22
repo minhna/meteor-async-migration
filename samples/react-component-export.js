@@ -1,4 +1,5 @@
 import React, { useEffect } from "react";
+import { BExported } from "./react-component-other-export";
 
 const FirstExported = ({ as1, as2, ...rest }) => {
   as1();
@@ -19,7 +20,12 @@ export function SecondExported({ as1 }) {
 export const ThirdExported = function ({ as2 }) {
   as2();
 
-  return <div>third exported</div>;
+  return (
+    <div>
+      <h1>third exported</h1>
+      <BExported as2={as2} />
+    </div>
+  );
 };
 
 export default FirstExported;

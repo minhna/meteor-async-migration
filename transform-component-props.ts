@@ -65,7 +65,7 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
 
     if (!fileContent || !realPath) {
       debug("[handleComponent] file content was not found");
-      return false;
+      return;
     }
 
     const componentRootCollection = j(fileContent, { parser: tsParser });
@@ -73,7 +73,7 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
 
     // find the component definition by name
     let componentParams: Pattern[] | undefined;
-    let componentPath: ASTPath;
+    let componentPath: ASTPath | undefined;
     let componentBody: BlockStatement | ExpressionKind | undefined;
     // first, find by variable name
     componentRootCollection.findVariableDeclarators(componentName).map((p) => {
@@ -109,6 +109,10 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
     // debug("[handleComponent] componentParams", componentParams);
     // debug("[handleComponent] componentBody", componentBody);
 
+    if (!componentPath) {
+      return;
+    }
+
     if (componentParams && componentParams.length > 0) {
       // find in props all async function
       Object.keys(props).map((propKey) => {
@@ -122,7 +126,7 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
             propValue.type
           )
         ) {
-          if (propValue.async) {
+          if (propValue.async && componentPath) {
             debug("[handleComponent] Async function prop:", propKey);
             // convert all usages of this function to async/await
             if (convertAllCallExpressionToAsync(propKey, j(componentPath), j)) {
@@ -134,12 +138,74 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
     }
 
     if (componentFileChanged) {
-      debug("new source:", componentRootCollection.toSource());
+      debug2("[handleComponent] new source for this file:", realPath);
+      debug(
+        "[handleComponent] new source:",
+        realPath,
+        componentRootCollection.toSource()
+      );
 
       if (!options.dry) {
         //write file
         fs.writeFileSync(realPath, componentRootCollection.toSource());
-        debug2("file changed:", realPath);
+        debug2("[handleComponent] file changed:", realPath);
+      }
+    }
+
+    // Work with child components
+    if (componentPath) {
+      debug("[handleComponent] _Work with child components of:", componentName);
+      const elements = j(componentPath).find(j.JSXElement).paths();
+      for (let i = 0; i < elements.length; i += 1) {
+        const p = elements[i];
+        debug("[handleComponent] _jsx element", p.value.loc?.start);
+
+        const childComponentName = getComponentName(p);
+        // debug("_component name:", childComponentName);
+
+        // component name must start with a capital letter.
+        if (!childComponentName || !/^[A-Z]/.test(childComponentName)) {
+          debug("[handleComponent] _not a react component, continue");
+          continue;
+        }
+
+        debug("[handleComponent] _child component name:", childComponentName);
+
+        const childProps = getComponentProps(p, j, props);
+        debug("[handleComponent] _child component props:", childProps);
+
+        // find the component declaration
+        let theComponent = findVariableDeclarator(childComponentName, p, j);
+        if (theComponent) {
+          debug(
+            "[handleComponent] _child component at:",
+            theComponent?.value.loc.start
+          );
+          handleComponent(childComponentName, realPath, childProps);
+        }
+
+        if (!theComponent) {
+          // find the component from import declarations
+          const importNode = findImportNodeByVariableName(
+            childComponentName,
+            componentRootCollection,
+            j
+          );
+          if (importNode) {
+            // debug("_import node:", importNode);
+            if (importNode.source.type === "StringLiteral") {
+              const realImportSource = getRealImportSource(
+                importNode.source.value,
+                realPath
+              );
+              debug(
+                "[handleComponent] _child imported component:",
+                realImportSource
+              );
+              handleComponent(childComponentName, realImportSource, childProps);
+            }
+          }
+        }
       }
     }
 
@@ -154,9 +220,6 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
     const p = elements[i];
     debug("_jsx element", p.value.loc?.start);
 
-    const props = getComponentProps(p, j);
-    // debug("_props:", props);
-
     const componentName = getComponentName(p);
     // debug("_component name:", componentName);
 
@@ -164,6 +227,9 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
     if (!componentName || !/^[A-Z]/.test(componentName)) {
       continue;
     }
+
+    const props = getComponentProps(p, j);
+    // debug("_props:", props);
 
     debug("_component name:", componentName);
     // debug("_props:", props);

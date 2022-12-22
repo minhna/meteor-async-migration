@@ -60,10 +60,10 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
     debug("[handleComponent] BEGIN:", componentName, filePath);
     // TODO: works with react context
 
-    const fileContent = getFileContent(filePath);
+    const { content: fileContent, realPath } = getFileContent(filePath);
     // debug("content\n", fileContent);
 
-    if (!fileContent) {
+    if (!fileContent || !realPath) {
       debug("[handleComponent] file content was not found");
       return false;
     }
@@ -138,8 +138,8 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
 
       if (!options.dry) {
         //write file
-        fs.writeFileSync(filePath, componentRootCollection.toSource());
-        debug2("file changed:", filePath);
+        fs.writeFileSync(realPath, componentRootCollection.toSource());
+        debug2("file changed:", realPath);
       }
     }
 

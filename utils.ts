@@ -365,28 +365,34 @@ export const getFunctionLocation = (p: ASTPath) => {
   }
 };
 
-export const getFileContent = (path: string): string | undefined => {
+export const getFileContent = (path: string) => {
   let fileContent: Buffer | null = null;
+  let realPath: string | undefined;
 
   if (/(\.js|\.ts)$/.test(path)) {
     try {
-      fileContent = fs.readFileSync(path);
+      realPath = path;
+      fileContent = fs.readFileSync(realPath);
     } catch (e) {
-      debug("File was not found:", path);
+      debug("File was not found:", realPath);
     }
   } else {
     try {
-      fileContent = fs.readFileSync(path + ".js");
+      realPath = path + ".js";
+      fileContent = fs.readFileSync(realPath);
     } catch (e) {
       try {
-        fileContent = fs.readFileSync(path + ".ts");
+        realPath = path + ".ts";
+        fileContent = fs.readFileSync(realPath);
       } catch (e2) {
         // check for index file
         try {
-          fileContent = fs.readFileSync(path + "/index.js");
+          realPath = path + "/index.js";
+          fileContent = fs.readFileSync(realPath);
         } catch (e3) {
           try {
-            fileContent = fs.readFileSync(path + "/index.ts");
+            realPath = path + "/index.ts";
+            fileContent = fs.readFileSync(realPath);
           } catch (e4) {
             debug("File was not found");
           }
@@ -396,7 +402,10 @@ export const getFileContent = (path: string): string | undefined => {
   }
 
   // debug("content", fileContent.toString());
-  return fileContent?.toString();
+  return {
+    content: fileContent?.toString(),
+    realPath,
+  };
 };
 
 export const getPathFromSource = (source: string): string => {

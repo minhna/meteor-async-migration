@@ -54,7 +54,7 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
     const realImportSource = getRealImportSource(fileSource, fileInfo.path);
     debug({ realImportSource });
 
-    const fileContent = getFileContent(realImportSource);
+    const { content: fileContent } = getFileContent(realImportSource);
     // debug("content\n", fileContent);
 
     if (!fileContent) {

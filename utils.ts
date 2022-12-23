@@ -27,6 +27,15 @@ export const addAwaitKeyword = (p: ASTPath<CallExpression>, j: JSCodeshift) => {
     return false;
   }
 
+  if (
+    p.parentPath.value.type === "MemberExpression" &&
+    p.parentPath.value.property.type === "Identifier" &&
+    p.parentPath.value.property.name === "then"
+  ) {
+    debug("handle promise by then()");
+    return false;
+  }
+
   const awaitNode = j.awaitExpression(p.value);
   debug(j(awaitNode).toSource());
   debug(j(p.value).toSource());
@@ -292,13 +301,11 @@ export const convertAllCallExpressionToAsync = (
     .map((p3) => {
       if (addAwaitKeyword(p3, j)) {
         changed = true;
-      }
-      const parentFunctionPath = findParentFunction(p3);
-      // debug("parent function path", parentFunctionPath?.value);
-      if (parentFunctionPath) {
-        // TODO: check if this followed by .then expression
-        if (setFunctionAsync(parentFunctionPath)) {
-          changed = true;
+
+        const parentFunctionPath = findParentFunction(p3);
+        // debug("parent function path", parentFunctionPath?.value);
+        if (parentFunctionPath) {
+          setFunctionAsync(parentFunctionPath);
         }
       }
       return null;
@@ -330,13 +337,10 @@ export const convertAllMemberExpressionCallToAsync = (
         // debug("add await expression", p);
         if (addAwaitKeyword(p, j)) {
           changed = true;
-        }
-        const parentFunctionPath = findParentFunction(p);
-        // debug("parent function path", parentFunctionPath?.value);
-        if (parentFunctionPath) {
-          // TODO: check if this followed by .then expression
-          if (setFunctionAsync(parentFunctionPath)) {
-            changed = true;
+          const parentFunctionPath = findParentFunction(p);
+          // debug("parent function path", parentFunctionPath?.value);
+          if (parentFunctionPath) {
+            setFunctionAsync(parentFunctionPath);
           }
         }
       }

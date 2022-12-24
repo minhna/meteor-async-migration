@@ -461,6 +461,48 @@ export const handleComponent = ({
           if (convertAllCallExpressionToAsync(propKey, j(componentPath), j)) {
             componentFileChanged = true;
           }
+          // Find renamed/assigned variable? e.g: const { cas2: cas2Renamed } = useContext(FirstContext);
+          j(componentPath)
+            .find(j.VariableDeclaration)
+            .map((vdp) => {
+              debug(
+                "[handleComponent] Variable declared in the component:",
+                vdp.value.declarations
+              );
+              vdp.value.declarations.map((decl) => {
+                if (decl.type === "VariableDeclarator") {
+                  switch (decl.id.type) {
+                    case "ObjectPattern": {
+                      // e.g: const { cas2: cas2Renamed } = useContext(FirstContext);
+                      debug(
+                        "[handleComponent] ObjectPattern",
+                        decl.id.properties.map((idProp) => {
+                          if (
+                            idProp.type == "ObjectProperty" &&
+                            idProp.key.type === "Identifier" &&
+                            idProp.key.name === propKey &&
+                            idProp.value.type === "Identifier" &&
+                            componentPath
+                          ) {
+                            if (
+                              convertAllCallExpressionToAsync(
+                                idProp.value.name,
+                                j(componentPath),
+                                j
+                              )
+                            ) {
+                              componentFileChanged = true;
+                            }
+                          }
+                        })
+                      );
+                      break;
+                    }
+                  }
+                }
+              });
+              return null;
+            });
         }
       }
     });

@@ -1,7 +1,7 @@
 import React, { useEffect } from "react";
 import { BExported, FirstContext } from "./react-component-other-export";
 
-const FirstExported = ({ as1, as2, ...rest }) => {
+export const FirstExported = ({ as1, as2, ...rest }) => {
   as1();
 
   useEffect(() => {
@@ -12,7 +12,9 @@ const FirstExported = ({ as1, as2, ...rest }) => {
 };
 
 export function SecondExported({ as1 }) {
-  as1();
+  const handleClick = () => {
+    as1();
+  };
 
   return <div>Second exported</div>;
 }
@@ -38,4 +40,4 @@ export const ThirdExported = function ({ as2 }) {
   );
 };
 
-export default FirstExported;
+export default SecondExported;

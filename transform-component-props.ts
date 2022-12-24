@@ -8,32 +8,21 @@
  * 5.1 Each component, check if props variable was async function (goto 3)
  */
 
-import { ExpressionKind } from "ast-types/gen/kinds";
-import {
-  FileInfo,
-  API,
-  Options,
-  ASTPath,
-  BlockStatement,
-  Pattern,
-} from "jscodeshift";
-import fs from "fs";
-
-const tsParser = require("jscodeshift/parser/ts");
+import { FileInfo, API, Options } from "jscodeshift";
 
 const debug = require("debug")("transform:component-props");
 const debug2 = require("debug")("transform:print:component-props");
 
 import {
-  ComponentPropsType,
-  convertAllCallExpressionToAsync,
   findImportNodeByVariableName,
   findVariableDeclarator,
-  getComponentName,
-  getComponentProps,
-  getFileContent,
   getRealImportSource,
 } from "./utils";
+import {
+  getComponentName,
+  getComponentProps,
+  handleComponent,
+} from "./utils-component";
 
 module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
   debug(
@@ -44,241 +33,6 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
   let fileChanged = false;
 
   const rootCollection = j(fileInfo.source);
-
-  /**
-   * Work with component definition
-   * 1. find all async function from props
-   * 2. find all usages of those async function
-   * 3. add await/async expression
-   * 4. find and return all child components with name, props and file location
-   * 5. call handleComponent with those components
-   */
-  const handleComponent = (
-    componentName: string,
-    filePath: string,
-    props: ComponentPropsType
-  ) => {
-    debug("[handleComponent] BEGIN:", componentName, filePath);
-
-    const { content: fileContent, realPath } = getFileContent(filePath);
-    // debug("content\n", fileContent);
-
-    if (!fileContent || !realPath) {
-      debug("[handleComponent] file content was not found");
-      return;
-    }
-
-    const componentRootCollection = j(fileContent, { parser: tsParser });
-    let componentFileChanged = false;
-
-    // find the component definition by name
-    let componentParams: Pattern[] | undefined;
-    let componentPath: ASTPath | undefined;
-    let componentBody: BlockStatement | ExpressionKind | undefined;
-
-    // first, find by variable name
-    componentRootCollection.findVariableDeclarators(componentName).map((p) => {
-      debug("[handleComponent] variable found at:", p.value.loc?.start);
-      switch (p.value.init?.type) {
-        case "ArrowFunctionExpression":
-        case "FunctionExpression":
-          componentParams = p.value.init.params;
-          componentPath = p;
-          componentBody = p.value.init.body;
-          break;
-
-        default:
-          debug(
-            "[handleComponent] Unhandled variable init type:",
-            p.value.init?.type
-          );
-      }
-      return null;
-    });
-    if (!componentBody) {
-      componentRootCollection.find(j.FunctionDeclaration).map((p) => {
-        if (p.value.id?.name === componentName) {
-          debug("[handleComponent] function found at:", p.value.id.loc?.start);
-          componentParams = p.value.params;
-          componentPath = p;
-          componentBody = p.value.body;
-        }
-        return null;
-      });
-    }
-
-    debug("[handleComponent] componentParams", componentParams);
-    // debug("[handleComponent] componentBody", componentBody);
-
-    if (!componentPath) {
-      return;
-    }
-
-    // TODO: works with react context
-    // find all useContext call
-    j(componentPath)
-      .find(j.CallExpression)
-      .map((p) => {
-        // debug("[handleComponent] _finding useContext:", p.value);
-        let contextName: string | undefined;
-        switch (p.value.callee.type) {
-          case "MemberExpression": {
-            if (
-              p.value.callee.property.type === "Identifier" &&
-              p.value.callee.property.name === "useContext"
-            ) {
-              debug("[handleComponent] _found useContext:", p.value.loc?.start);
-              // debug("[handleComponent]", p.value);
-              if (p.value.arguments[0].type === "Identifier") {
-                contextName = p.value.arguments[0].name;
-              }
-            }
-            break;
-          }
-          case "Identifier": {
-            if (p.value.callee.name === "useContext") {
-              debug("[handleComponent] _found useContext:", p.value.loc?.start);
-              // debug("[handleComponent]", p.value);
-              if (p.value.arguments[0].type === "Identifier") {
-                contextName = p.value.arguments[0].name;
-              }
-            }
-            break;
-          }
-        }
-        if (!contextName) {
-          return null;
-        }
-
-        debug("[handleComponent] _context name:", contextName);
-        debug("[handleComponent] _context usage parent path:", p.parentPath);
-        const extractedContextVariables: { [key: string]: string } = {};
-        if (p.parentPath.value.type === "VariableDeclarator") {
-          if (p.parentPath.value.id.type === "ObjectPattern") {
-            debug(
-              "[handleComponent] _properties",
-              p.parentPath.value.id.properties
-            );
-            p.parentPath.value.id.properties.map((property) => {
-              if (property.type === "ObjectProperty") {
-                if (
-                  property.key.type === "Identifier" &&
-                  property.value.type === "Identifier"
-                ) {
-                  extractedContextVariables[property.value.name] =
-                    property.key.name;
-                }
-              }
-            });
-          }
-        }
-        debug(
-          "[handleComponent] extractedContextVariables:",
-          extractedContextVariables
-        );
-
-        return null;
-      });
-
-    // works with component's params
-    if (componentParams && componentParams.length > 0) {
-      // find in props all async function
-      Object.keys(props).map((propKey) => {
-        const propValue = props[propKey].value
-          ? props[propKey].value
-          : props[propKey];
-        // debug("prop Key", propKey);
-        // debug("prop Value", propValue);
-        if (
-          ["FunctionExpression", "ArrowFunctionExpression"].includes(
-            propValue.type
-          )
-        ) {
-          if (propValue.async && componentPath) {
-            debug("[handleComponent] Async function prop:", propKey);
-            // convert all usages of this function to async/await
-            if (convertAllCallExpressionToAsync(propKey, j(componentPath), j)) {
-              componentFileChanged = true;
-            }
-          }
-        }
-      });
-    }
-
-    if (componentFileChanged) {
-      debug2("[handleComponent] new source for this file:", realPath);
-      debug(
-        "[handleComponent] new source:",
-        realPath,
-        componentRootCollection.toSource()
-      );
-
-      if (!options.dry) {
-        //write file
-        fs.writeFileSync(realPath, componentRootCollection.toSource());
-        debug2("[handleComponent] file changed:", realPath);
-      }
-    }
-
-    // Work with child components
-    if (componentPath) {
-      debug("[handleComponent] _Work with child components of:", componentName);
-      const elements = j(componentPath).find(j.JSXElement).paths();
-      for (let i = 0; i < elements.length; i += 1) {
-        const p = elements[i];
-        debug("[handleComponent] _jsx element", p.value.loc?.start);
-
-        const childComponentName = getComponentName(p);
-        // debug("_component name:", childComponentName);
-
-        // component name must start with a capital letter.
-        if (!childComponentName || !/^[A-Z]/.test(childComponentName)) {
-          debug("[handleComponent] _not a react component, continue");
-          continue;
-        }
-
-        debug("[handleComponent] _child component name:", childComponentName);
-
-        const childProps = getComponentProps(p, j, props);
-        debug("[handleComponent] _child component props:", childProps);
-
-        // find the component declaration
-        let theComponent = findVariableDeclarator(childComponentName, p, j);
-        if (theComponent) {
-          debug(
-            "[handleComponent] _child component at:",
-            theComponent?.value.loc.start
-          );
-          handleComponent(childComponentName, realPath, childProps);
-        }
-
-        if (!theComponent) {
-          // find the component from import declarations
-          const importNode = findImportNodeByVariableName(
-            childComponentName,
-            componentRootCollection,
-            j
-          );
-          if (importNode) {
-            // debug("_import node:", importNode);
-            if (importNode.source.type === "StringLiteral") {
-              const realImportSource = getRealImportSource(
-                importNode.source.value,
-                realPath
-              );
-              debug(
-                "[handleComponent] _child imported component:",
-                realImportSource
-              );
-              handleComponent(childComponentName, realImportSource, childProps);
-            }
-          }
-        }
-      }
-    }
-
-    debug("[handleComponent] END:", componentName, filePath);
-  };
 
   // find all react elements
   const elements = rootCollection.find(j.JSXElement).paths();
@@ -306,24 +60,40 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
     let theComponent = findVariableDeclarator(componentName, p, j);
     if (theComponent) {
       // debug("_component:", theComponent?.value);
-      handleComponent(componentName, fileInfo.path, props);
+      handleComponent({
+        componentName,
+        filePath: fileInfo.path,
+        props,
+        j,
+        options,
+      });
     }
 
     if (!theComponent) {
       // find the component from import declarations
-      const importNode = findImportNodeByVariableName(
+      const { importSource, importSpecType } = findImportNodeByVariableName(
         componentName,
         rootCollection,
         j
       );
-      if (importNode) {
-        // debug("_import node:", importNode);
-        if (importNode.source.type === "StringLiteral") {
+      if (importSource) {
+        // check if not from local file
+        if (/^[^./]/.test(importSource)) {
+          debug("It looks like a library:", importSource);
+        } else {
+          // debug("_import from source:", importSource);
           const realImportSource = getRealImportSource(
-            importNode.source.value,
+            importSource,
             fileInfo.path
           );
-          handleComponent(componentName, realImportSource, props);
+          handleComponent({
+            componentName,
+            filePath: realImportSource,
+            props,
+            j,
+            options,
+            importSpecType,
+          });
         }
       }
     }

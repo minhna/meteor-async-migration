@@ -183,6 +183,7 @@ export const findVariableDeclarator = (
     pathToFindIn = thisBlock;
     startLine = getLocation(thisBlock)?.start.line;
   }
+  debug(`find variable {${name}} from line: ${startLine}`);
 
   j(pathToFindIn)
     .findVariableDeclarators(name)
@@ -199,8 +200,17 @@ export const findVariableDeclarator = (
           break;
         case "BlockStatement": {
           if (startLine) {
-            if (variableParentBlock.value.loc?.start.line === startLine) {
+            if (
+              variableParentBlock.value.loc?.start.line &&
+              variableParentBlock.value.loc?.start.line >= startLine
+            ) {
               declarator = varDeclarePath;
+            } else {
+              debug(
+                "different block start line:",
+                variableParentBlock.value.loc?.start.line,
+                startLine
+              );
             }
           } else {
             debug("variableParentBlock", variableParentBlock);
@@ -215,7 +225,12 @@ export const findVariableDeclarator = (
     });
 
   if (!declarator) {
-    return findVariableDeclarator(name, pathToFindIn.parentPath, j);
+    if (pathToFindIn.parentPath) {
+      debug("find again with new path");
+      return findVariableDeclarator(name, pathToFindIn.parentPath, j);
+    } else {
+      debug(`variable ${name} was not found`);
+    }
   }
 
   return declarator;
@@ -227,6 +242,8 @@ export const findImportNodeByVariableName = (
   j: JSCodeshift
 ) => {
   let importNode: ImportDeclaration | undefined;
+  let importSpecType: string | undefined;
+  let importSource: string | undefined;
   // find all imported async functions
   const importedNodes = rootCollection.find(j.ImportDeclaration);
   importedNodes.map((p) => {
@@ -234,16 +251,22 @@ export const findImportNodeByVariableName = (
     p.value.specifiers?.map((spec) => {
       if (
         spec.local?.name === name &&
-        typeof p.value.source.value === "string"
+        p.value.source.type === "StringLiteral"
       ) {
         importNode = p.value;
+        importSpecType = spec.type;
+        importSource = p.value.source.value;
       }
       return null;
     });
     return null;
   });
 
-  return importNode;
+  return {
+    importNode,
+    importSpecType,
+    importSource,
+  };
 };
 
 export const setFunctionAsync = (p: ASTPath) => {
@@ -455,173 +478,4 @@ export const isMongoCollection = (name: string, collection: Collection) => {
     debug(`Not a local declaration mongo collection: ${name}`);
   }
   return result;
-};
-
-export type ComponentPropsType = { [key: string]: any };
-
-export const getComponentProps = (
-  p: ASTPath<JSXElement>,
-  j: JSCodeshift,
-  parentComponentProps?: ComponentPropsType
-) => {
-  debug("_BEGIN getComponentProps");
-
-  const { attributes } = p.value.openingElement;
-  debug("_attributes", attributes);
-
-  let props: ComponentPropsType = {};
-
-  attributes?.map((att) => {
-    switch (att.type) {
-      case "JSXAttribute": {
-        // get the prop name:
-        let propName = "";
-        switch (att.name.type) {
-          case "JSXIdentifier":
-            propName = att.name.name;
-            break;
-        }
-
-        if (!propName) {
-          debug("__No prop name found");
-          break;
-        }
-
-        if (!att.value) {
-          // e.g: <SomeComponent isActive />
-          props[propName] = true;
-        } else {
-          switch (att.value.type) {
-            case "JSXExpressionContainer": {
-              // e.g: <Component someProp={someVar} />
-              debug("___att.value.expression", att.value.expression);
-              const { expression } = att.value;
-              switch (expression.type) {
-                case "Identifier": {
-                  // e.g: <Component someProp={someVar} />
-                  debug("____attribute variable name:", expression.name);
-                  // now find the variable, check if it was async function
-                  // first, find in parent component props
-                  if (
-                    parentComponentProps &&
-                    parentComponentProps[expression.name]
-                  ) {
-                    debug(
-                      "____found in parent component props:",
-                      parentComponentProps[expression.name]
-                    );
-                    props[propName] = parentComponentProps[expression.name];
-                  } else {
-                    const variable = findVariableDeclarator(
-                      expression.name,
-                      p,
-                      j
-                    );
-                    debug("____attribute variable:", variable);
-                    if (variable) {
-                      props[propName] = variable.value.init;
-                    }
-                  }
-
-                  break;
-                }
-                case "ArrowFunctionExpression":
-                // e.g: <Component someProp={() => {})} />
-                case "FunctionExpression": {
-                  // e.g: <Component someProp={function () {}} />
-                  props[propName] = expression;
-                  break;
-                }
-              }
-
-              break;
-            }
-            case "StringLiteral": {
-              // e.g: <Component myProp="My value" />
-              props[propName] = att.value;
-
-              break;
-            }
-          }
-        }
-        break;
-      }
-      case "JSXSpreadAttribute": {
-        // e.g: {...props}
-        debug("__JSXSpreadAttribute", att);
-        switch (att.argument.type) {
-          case "Identifier": {
-            // e.g: {...props}
-            // first, find in the parent component props
-            if (
-              parentComponentProps &&
-              parentComponentProps[att.argument.name]
-            ) {
-              debug(
-                "____found in parent component props:",
-                parentComponentProps[att.argument.name]
-              );
-              props = { ...props, ...parentComponentProps[att.argument.name] };
-
-              break;
-            }
-
-            const bigProps = findVariableDeclarator(att.argument.name, p, j);
-            if (bigProps) {
-              debug("___found spread attribute variable:", bigProps);
-              switch (bigProps.value.type) {
-                case "VariableDeclarator": {
-                  // e.g: const props = { v: "V" }
-                  debug("____variable declarator init:", bigProps.value.init);
-                  switch (bigProps.value.init?.type) {
-                    case "ObjectExpression": {
-                      const { properties } = bigProps.value.init;
-                      debug("_____Object expression properties:", properties);
-                      properties.forEach((pr) => {
-                        if (pr.type === "ObjectProperty") {
-                          // get the property name
-                          let prName = "";
-                          switch (pr.key.type) {
-                            case "Identifier":
-                              prName = pr.key.name;
-                              break;
-                          }
-
-                          if (prName && pr.value) {
-                            props[prName] = pr.value;
-                          }
-                        }
-                      });
-                      break;
-                    }
-                  }
-
-                  break;
-                }
-              }
-            }
-            break;
-          }
-        }
-
-        break;
-      }
-    }
-  });
-
-  debug("_END getComponentProps");
-
-  return props;
-};
-
-export const getComponentName = (p: ASTPath<JSXElement>) => {
-  debug("_BEGIN getComponentName:");
-  debug(p.value.openingElement.name);
-  const { name } = p.value.openingElement;
-  switch (name.type) {
-    case "JSXIdentifier":
-      return name.name;
-  }
-
-  debug("_END getComponentName:");
 };

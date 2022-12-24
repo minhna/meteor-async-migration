@@ -101,13 +101,60 @@ export const getComponentProps = (
 
                   break;
                 }
+                case "ObjectExpression": {
+                  // e.g: <FirstContext.Provider value={{ cas1, cas2 }}>
+                  const propValue = {};
+                  expression.properties.map((xp) => {
+                    switch (xp.type) {
+                      case "ObjectProperty": {
+                        if (xp.key.type === "Identifier") {
+                          switch (xp.value.type) {
+                            case "Identifier": {
+                              const variable = findVariableDeclarator(
+                                xp.value.name,
+                                p,
+                                j
+                              );
+                              debug("____ObjectProperty variable:", variable);
+                              if (variable) {
+                                propValue[xp.key.name] = variable.value.init;
+                              }
+
+                              break;
+                            }
+                            case "ArrowFunctionExpression":
+                            // e.g: <Component value={{ cas1, cas2: () => {} }} />
+                            case "FunctionExpression":
+                              // e.g: <Component value={{ cas1, cas2: function() {} }} />
+                              propValue[xp.key.name] = xp.value;
+                              break;
+                            default:
+                              debug(
+                                "__Unhandled ObjectProperty value type:",
+                                xp.value.type
+                              );
+                          }
+                        }
+                        break;
+                      }
+                      default:
+                        debug(
+                          "____Unhandled expression property type:",
+                          xp.type
+                        );
+                    }
+                  });
+                  props[propName] = propValue;
+                  break;
+                }
                 case "ArrowFunctionExpression":
                 // e.g: <Component someProp={() => {})} />
-                case "FunctionExpression": {
+                case "FunctionExpression":
                   // e.g: <Component someProp={function () {}} />
                   props[propName] = expression;
                   break;
-                }
+                default:
+                  debug("__Unhandled attribute value type:", att.value.type);
               }
 
               break;
@@ -291,6 +338,7 @@ export const handleComponent = ({
   }
 
   // TODO: works with react context
+  let contextProps: ComponentPropsType | undefined;
   // find all useContext call
   j(componentPath)
     .find(j.CallExpression)
@@ -349,23 +397,57 @@ export const handleComponent = ({
         }
       }
       debug(
-        "[handleComponent] extractedContextVariables:",
+        `[handleComponent] extractedContextVariables from context ${contextName}:`,
         extractedContextVariables
       );
+      if (Object.keys(extractedContextVariables).length === 0) {
+        return null;
+      }
+
+      // now find the imported context
+      const { importSource, importSpecType } = findImportNodeByVariableName(
+        contextName,
+        componentRootCollection,
+        j
+      );
+      debug("_import from source:", importSource);
+      if (!importSource) {
+        debug("no imported source found");
+        return null;
+      }
+      if (/^[^./]/.test(importSource)) {
+        debug("It looks like a library:", importSource);
+        return null;
+      }
+      const realImportSource = getRealImportSource(importSource, realPath);
+
+      // read the context source
+      const providerProps = getContextVariables({
+        contextName,
+        filePath: realImportSource,
+        j,
+        importSpecType,
+      });
+
+      if (providerProps && providerProps.value) {
+        contextProps = providerProps.value;
+      }
 
       return null;
     });
 
+  const allProps = { ...props, ...contextProps };
+
   // works with component's params
   if (componentParams && componentParams.length > 0) {
     // find in props all async function
-    Object.keys(props).map((propKey) => {
-      if (!props[propKey]) {
+    Object.keys(allProps).map((propKey) => {
+      if (!allProps[propKey]) {
         return;
       }
-      const propValue = props[propKey].value
-        ? props[propKey].value
-        : props[propKey];
+      const propValue = allProps[propKey].value
+        ? allProps[propKey].value
+        : allProps[propKey];
       // debug("prop Key", propKey);
       // debug("prop Value", propValue);
       if (
@@ -421,7 +503,7 @@ export const handleComponent = ({
 
       debug("[handleComponent] _child component name:", childComponentName);
 
-      const childProps = getComponentProps(p, j, props);
+      const childProps = getComponentProps(p, j, allProps);
       debug(
         `[handleComponent] _child component ${childComponentName} props:`,
         childProps
@@ -478,4 +560,68 @@ export const handleComponent = ({
   }
 
   debug("[handleComponent] END:", componentName, filePath);
+};
+
+interface GetContextVariables {
+  contextName: string;
+  filePath: string;
+  j: JSCodeshift;
+  importSpecType?: String;
+}
+export const getContextVariables = ({
+  contextName,
+  filePath,
+  j,
+  importSpecType,
+}: GetContextVariables) => {
+  // read the context file
+  const { content: fileContent, realPath } = getFileContent(filePath);
+  // debug("content\n", fileContent);
+
+  if (!fileContent || !realPath) {
+    debug("[getContextVariables] file content was not found");
+    return;
+  }
+  const contextRootCollection = j(fileContent, { parser: tsParser });
+  // find the context declaration
+  let theRealContextName = contextName;
+  if (importSpecType === "ImportDefaultSpecifier") {
+    // find the default export
+    contextRootCollection.find(j.ExportDefaultDeclaration).map((xp) => {
+      if (xp.value.declaration.type === "Identifier") {
+        theRealContextName = xp.value.declaration.name;
+        debug("[getContextVariables] real context name:", theRealContextName);
+      }
+      return null;
+    });
+  }
+
+  let vars: ComponentPropsType = {};
+
+  // find the context provider
+  contextRootCollection.find(j.JSXElement).map((jsx) => {
+    debug("[getContextVariables] jsx", jsx.value.openingElement);
+    if (jsx.value.openingElement.name.type === "JSXMemberExpression") {
+      const { object, property } = jsx.value.openingElement.name;
+      if (
+        object.type === "JSXIdentifier" &&
+        object.name === theRealContextName &&
+        property.type === "JSXIdentifier" &&
+        property.name === "Provider"
+      ) {
+        // get the variables from attributes
+        const providerProps = getComponentProps(jsx, j);
+        debug("[getContextVariables] Found provider props:", providerProps);
+        if (providerProps.value) {
+          vars = providerProps;
+        }
+      }
+    }
+
+    return null;
+  });
+
+  debug("[getContextVariables] context variables:", vars);
+
+  return vars;
 };

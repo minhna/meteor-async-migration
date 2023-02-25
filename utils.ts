@@ -44,7 +44,7 @@ export const addAwaitKeyword = (p: ASTPath<CallExpression>, j: JSCodeshift) => {
 };
 
 export const findParentPromiseAll = (p: ASTPath) => {
-  if (!p || p.parentPath.value.type === "BlockStatement") {
+  if (!p || !p.parentPath || p.parentPath.value.type === "BlockStatement") {
     return;
   }
 

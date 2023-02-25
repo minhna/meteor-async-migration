@@ -9,6 +9,8 @@ Linux: Run `sudo npm install -g jscodeshift`
 
 ## Features
 
+Note: if you have .ts files, you'll need to add `--extensions=ts,js` to the command
+
 ### 1: Convert current APIs to new Meteor Async/Await APIs
 
 Transform file: **transform.ts**

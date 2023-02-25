@@ -58,7 +58,7 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
             // set parent function async
             const parentFunction = findParentFunction(p);
             if (parentFunction) {
-              setFunctionAsync(parentFunction);
+              setFunctionAsync(parentFunction, j);
             }
 
             fileChanged = true;

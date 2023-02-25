@@ -375,7 +375,7 @@ export const convertAllCallExpressionToAsync = (
         const parentFunctionPath = findParentFunction(p3);
         // debug("parent function path", parentFunctionPath?.value);
         if (parentFunctionPath) {
-          setFunctionAsync(parentFunctionPath);
+          setFunctionAsync(parentFunctionPath, j);
         }
       }
       return null;
@@ -410,7 +410,7 @@ export const convertAllMemberExpressionCallToAsync = (
           const parentFunctionPath = findParentFunction(p);
           // debug("parent function path", parentFunctionPath?.value);
           if (parentFunctionPath) {
-            setFunctionAsync(parentFunctionPath);
+            setFunctionAsync(parentFunctionPath, j);
           }
         }
       }

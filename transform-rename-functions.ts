@@ -125,7 +125,7 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
       // find the parent function
       const parentFunctionPath = findParentFunction(replaceThisPath);
       if (parentFunctionPath) {
-        if (setFunctionAsync(parentFunctionPath)) {
+        if (setFunctionAsync(parentFunctionPath, j)) {
           fileChanged = true;
         }
         // then find all functions which use this async function

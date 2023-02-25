@@ -268,37 +268,78 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
     return isCursorCall;
   };
 
+  const switchToAsyncApi = (p: ASTPath) => {
+    const callExpression = findParentCallExpression(p);
+    if (callExpression) {
+      if (addAwaitKeyword(callExpression, j)) {
+        fileChanged = true;
+      }
+      // set parent function async
+      const parentFunction = findParentFunction(callExpression);
+      if (parentFunction) {
+        if (setFunctionAsync(parentFunction, j)) {
+          fileChanged = true;
+        }
+      }
+    }
+  };
+
   // find all Member expression
   rootCollection.find(j.MemberExpression).map((p) => {
     // debug("found member expression", p.value);
     if (p.value.property.type === "Identifier") {
       switch (p.value.property.name) {
-        // Meteor 2.9
+        // Meteor 2.9: https://guide.meteor.com/2.9-migration.html
         case "_attemptLogin":
         case "_loginMethod":
         case "_runLoginHandlers":
         case "_attemptLogin":
-        case "_checkPassword": {
+        case "_checkPassword":
+        case "createUserVerifyingEmail": {
           if (checkAccountsCalleeObject(p.value)) {
             if (p.value.property.name === "_checkPassword") {
               // rename property to _checkPasswordAsync
               p.value.property.name = "_checkPasswordAsync";
             }
 
-            const callExpression = findParentCallExpression(p);
-            if (callExpression) {
-              if (addAwaitKeyword(callExpression, j)) {
-                fileChanged = true;
-              }
-              // set parent function async
-              const parentFunction = findParentFunction(callExpression);
-              if (parentFunction) {
-                if (setFunctionAsync(parentFunction, j)) {
-                  fileChanged = true;
-                }
-              }
-            }
+            switchToAsyncApi(p);
           }
+          break;
+        }
+        case "send": {
+          if (
+            p.value.object.type === "Identifier" &&
+            p.value.object.name === "Email"
+          ) {
+            // rename property to _checkPasswordAsync
+            p.value.property.name = "sendAsync";
+            switchToAsyncApi(p);
+          }
+
+          break;
+        }
+        case "user": {
+          if (
+            p.value.object.type === "Identifier" &&
+            p.value.object.name === "Meteor"
+          ) {
+            // rename property to _checkPasswordAsync
+            p.value.property.name = "userAsync";
+            switchToAsyncApi(p);
+          }
+
+          break;
+        }
+        case "minifyCss": {
+          if (
+            p.value.object.type === "Identifier" &&
+            p.value.object.name === "CssTools"
+          ) {
+            // rename property to _checkPasswordAsync
+            p.value.property.name = "minifyCssAsync";
+            switchToAsyncApi(p);
+          }
+
           break;
         }
 
@@ -318,19 +359,7 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
           // convert rename property
           p.value.property.name = methodsMapping[p.value.property.name];
 
-          const callExpression = findParentCallExpression(p);
-          if (callExpression) {
-            if (addAwaitKeyword(callExpression, j)) {
-              fileChanged = true;
-            }
-            // set parent function async
-            const parentFunction = findParentFunction(callExpression);
-            if (parentFunction) {
-              if (setFunctionAsync(parentFunction, j)) {
-                fileChanged = true;
-              }
-            }
-          }
+          switchToAsyncApi(p);
 
           break;
         }
@@ -354,21 +383,7 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
               // convert rename property
               p.value.property.name = methodsMapping[p.value.property.name];
 
-              const callExpression = findParentCallExpression(p);
-              if (callExpression) {
-                if (addAwaitKeyword(callExpression, j)) {
-                  fileChanged = true;
-                }
-                // set parent function async
-                const parentFunction = findParentFunction(callExpression);
-                if (parentFunction) {
-                  if (setFunctionAsync(parentFunction, j)) {
-                    fileChanged = true;
-                  }
-                }
-              } else {
-                debug("call expression was not found");
-              }
+              switchToAsyncApi(p);
 
               break;
             }
@@ -411,16 +426,7 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
                   // convert rename property
                   p.value.property.name = methodsMapping[p.value.property.name];
 
-                  if (addAwaitKeyword(callExpression, j)) {
-                    fileChanged = true;
-                  }
-                  // set parent function async
-                  const parentFunction = findParentFunction(callExpression);
-                  if (parentFunction) {
-                    if (setFunctionAsync(parentFunction, j)) {
-                      fileChanged = true;
-                    }
-                  }
+                  switchToAsyncApi(p);
                 }
               }
 

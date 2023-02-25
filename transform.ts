@@ -284,7 +284,7 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
             // set parent function async
             const parentFunction = findParentFunction(callExpression);
             if (parentFunction) {
-              if (setFunctionAsync(parentFunction)) {
+              if (setFunctionAsync(parentFunction, j)) {
                 fileChanged = true;
               }
             }

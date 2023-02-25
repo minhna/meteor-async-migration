@@ -8,9 +8,11 @@ import {
   JSXElement,
   SourceLocation,
   ImportDeclaration,
+  TSTypeAnnotation,
 } from "jscodeshift";
 import fs from "fs";
 import CONSTANTS from "./constants";
+import { type } from "os";
 
 const debug = require("debug")("transform:utils");
 
@@ -269,7 +271,7 @@ export const findImportNodeByVariableName = (
   };
 };
 
-export const setFunctionAsync = (p: ASTPath) => {
+export const setFunctionAsync = (p: ASTPath, j?: JSCodeshift) => {
   if (
     p.value.type === "ArrowFunctionExpression" ||
     p.value.type === "FunctionDeclaration" ||
@@ -278,6 +280,51 @@ export const setFunctionAsync = (p: ASTPath) => {
     p.value.type === "ClassMethod"
   ) {
     debug("set function async", p.value.loc?.start);
+    if (p.value.returnType) {
+      debug("return type", p.value.returnType);
+      const { typeAnnotation } = p.value.returnType;
+
+      if (
+        typeAnnotation?.type === "TSTypeReference" &&
+        typeAnnotation.typeName.type === "Identifier" &&
+        typeAnnotation.typeName.name === "Promise"
+      ) {
+        debug("typeParameters", typeAnnotation.typeParameters);
+      } else {
+        if (j && typeAnnotation) {
+          // add promise to return type
+          debug("TODO: add promise to return type");
+          const newReturnType = j.tsTypeAnnotation(
+            j?.tsTypeReference(
+              {
+                name: "Promise",
+                type: "Identifier",
+              },
+              j.tsTypeParameterInstantiation([
+                // j.tsBooleanKeyword()
+                typeAnnotation,
+              ])
+            )
+          );
+          p.value.returnType = newReturnType;
+        }
+      }
+
+      // if (!hasPromiseAlready && j) {
+      //   // add promise to return type
+      //   debug("TODO: add promise to return type");
+      //   const newReturnType = j.tsTypeAnnotation(
+      //     j?.tsTypeReference(
+      //       {
+      //         name: "Promise",
+      //         type: "Identifier",
+      //       },
+      //       j.tsTypeParameterInstantiation([j.tsBooleanKeyword()])
+      //     )
+      //   );
+      //   p.value.returnType = newReturnType;
+      // }
+    }
     if (p.value.async === true) {
       return false;
     }

@@ -210,6 +210,18 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
     return false;
   };
 
+  // Meteor 2.9
+  const checkAccountsCalleeObject = (callee: MemberExpression) => {
+    debug("callee object", callee.object.loc?.start);
+    if (
+      callee.object.type === "Identifier" &&
+      callee.object.name === "Accounts"
+    ) {
+      return true;
+    }
+    return false;
+  };
+
   const checkCalleeObject = (callee: MemberExpression) => {
     debug("callee object", callee.object.loc?.start);
     switch (callee.object.type) {
@@ -261,6 +273,36 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
     // debug("found member expression", p.value);
     if (p.value.property.type === "Identifier") {
       switch (p.value.property.name) {
+        // Meteor 2.9
+        case "_attemptLogin":
+        case "_loginMethod":
+        case "_runLoginHandlers":
+        case "_attemptLogin":
+        case "_checkPassword": {
+          if (checkAccountsCalleeObject(p.value)) {
+            if (p.value.property.name === "_checkPassword") {
+              // rename property to _checkPasswordAsync
+              p.value.property.name = "_checkPasswordAsync";
+            }
+
+            const callExpression = findParentCallExpression(p);
+            if (callExpression) {
+              if (addAwaitKeyword(callExpression, j)) {
+                fileChanged = true;
+              }
+              // set parent function async
+              const parentFunction = findParentFunction(callExpression);
+              if (parentFunction) {
+                if (setFunctionAsync(parentFunction, j)) {
+                  fileChanged = true;
+                }
+              }
+            }
+          }
+          break;
+        }
+
+        // Meteor 2.8
         case "findOne":
         case "insert":
         case "upsert":

@@ -1,6 +1,6 @@
 # meteor async migration
 
-This tool helps us to migrate existing codebase to support new async API in Meteor version 2.8
+This tool helps us to migrate existing codebase to support new async API in Meteor version 2.8 and 2.9
 
 ## Install jscodeshift toolkit
 

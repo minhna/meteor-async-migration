@@ -502,22 +502,35 @@ export const isMongoCollection = (name: string, collection: Collection) => {
     .findVariableDeclarators(name)
     .at(0)
     .map((p6) => {
-      // debug(p6.value.init)
-      if (
-        p6.value.type === "VariableDeclarator" &&
-        p6.value.init?.type === "NewExpression" &&
-        p6.value.init.callee.type === "MemberExpression"
-      ) {
-        const { object, property } = p6.value.init.callee;
-        if (
-          object.type === "Identifier" &&
-          object.name === "Mongo" &&
-          property.type === "Identifier" &&
-          property.name === "Collection"
-        ) {
-          result = true;
+      debug(`found ${name} variable declarator value.init`, p6.value.init);
+      switch (p6.value.init?.type) {
+        case "NewExpression": {
+          if (p6.value.init.callee.type === "MemberExpression") {
+            const { object, property } = p6.value.init.callee;
+            if (
+              object.type === "Identifier" &&
+              object.name === "Mongo" &&
+              property.type === "Identifier" &&
+              property.name === "Collection"
+            ) {
+              result = true;
+            }
+          }
+          break;
+        }
+        case "MemberExpression": {
+          const { object, property } = p6.value.init;
+          if (
+            object.type === "Identifier" &&
+            object.name === "Meteor" &&
+            property.type === "Identifier" &&
+            property.name === "users"
+          ) {
+            result = true;
+          }
         }
       }
+
       // declarationPath = p6
       return null;
     });

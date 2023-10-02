@@ -17,7 +17,7 @@ import {
   file,
 } from "jscodeshift";
 
-const tsParser = require("jscodeshift/parser/ts");
+const tsParser = require("jscodeshift/parser/babel5Compat");
 
 const debug = require("debug")("transform:export-async-script");
 const debug2 = require("debug")("transform:print:export-async-script");

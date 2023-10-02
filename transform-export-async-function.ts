@@ -13,6 +13,8 @@ import {
   Options,
   ExportDefaultDeclaration,
   ExportNamedDeclaration,
+  Collection,
+  file,
 } from "jscodeshift";
 
 const tsParser = require("jscodeshift/parser/ts");
@@ -22,9 +24,11 @@ const debug2 = require("debug")("transform:print:export-async-script");
 
 import {
   convertAllCallExpressionToAsync,
+  convertAllMemberExpressionCallToAsync,
   getFileContent,
   getRealImportSource,
 } from "./utils";
+import * as fs from "node:fs";
 
 module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
   debug(
@@ -37,206 +41,194 @@ module.exports = function (fileInfo: FileInfo, { j }: API, options: Options) {
 
   const rootCollection = j(fileInfo.source);
 
-  // function to read the export source file, then check for exported async function
-  interface AnalyzeSourceParams {
-    exportedFunction: string;
-    exportType: "default" | "named";
-    fileSource: string;
+  function isVariableDeclarationAsync(
+    importedRootCollection: Collection<any>,
+    name: string
+  ): boolean {
+    return (
+      importedRootCollection.find(j.VariableDeclaration).some((d) => {
+        // debug("declaration", d.value.declarations);
+        return d.value.declarations.some((d) => {
+          if (d.type === "VariableDeclarator") {
+            if (d.id.type === "Identifier") {
+              if (d.id.name === name) {
+                // debug("found variable", d);
+                // check is async function
+                if (
+                  d.init?.type === "FunctionExpression" ||
+                  d.init?.type === "ArrowFunctionExpression"
+                ) {
+                  if (d.init.async) {
+                    return true;
+                  }
+                }
+              }
+            }
+          }
+          return false;
+        });
+      }) ||
+      importedRootCollection.find(j.FunctionDeclaration).some((d) => {
+        return (
+          d.value.id?.type === "Identifier" &&
+          d.value.id.name === name &&
+          d.value.async
+        );
+      })
+    );
   }
-  const analyzeSource = ({
-    exportedFunction,
-    exportType,
-    fileSource,
-  }: AnalyzeSourceParams): boolean => {
-    debug("===analyze source begin:", exportType, exportedFunction, fileSource);
+  // function to read the export source file, then check for exported async function
 
-    // open file to read
-    const realImportSource = getRealImportSource(fileSource, fileInfo.path);
-    debug({ realImportSource });
-
-    const { content: fileContent } = getFileContent(realImportSource);
-    // debug("content\n", fileContent);
-
-    if (!fileContent) {
-      return false;
+  function resolve(fileSource, currentPath) {
+    const realImportSource = getRealImportSource(fileSource, currentPath);
+    const { realPath } = getFileContent(realImportSource);
+    if (realPath == null) {
+      debug2("not found", fileSource, currentPath, realImportSource);
     }
+    return realPath;
+  }
+  function analyzeSource(sourcePath): Set<string> {
+    debug("===analyze source begin:", sourcePath);
 
-    const importedRootCollection = j(fileContent, { parser: tsParser });
+    if (!/\.(ts|tsx|js|jsx)$/.test(sourcePath)) {
+      return new Set();
+    }
+    const contents = fs.readFileSync(sourcePath, { encoding: "utf-8" });
+    if (!contents) {
+      return new Set();
+    }
+    // debug2('attempting to analyse', sourcePath)
+    const col = j(contents, { parser: tsParser });
     // debug(
     //   "imported root collection",
     //   importedRootCollection,
     //   importedRootCollection.toSource()
     // );
 
-    let isAsync = false;
+    const asyncExports = new Set<string>();
+    col.find(j.ExportNamedDeclaration).forEach((sp) => {
+      const node = sp.node;
 
-    const handleExportDeclaration = (
-      node: ExportDefaultDeclaration | ExportNamedDeclaration
-    ) => {
-      // debug(node.declaration);
-      switch (node.declaration?.type) {
-        case "FunctionDeclaration":
-          // debug("FunctionDeclaration", node.declaration);
-          if (
-            node.declaration.id?.name === exportedFunction &&
-            node.declaration.async
-          ) {
-            isAsync = true;
-          }
-          break;
-        case "VariableDeclaration":
-          // debug("VariableDeclaration", node.declaration.declarations);
-          node.declaration.declarations.map((d) => {
-            if (d.type === "VariableDeclarator") {
-              if (d.id.type === "Identifier") {
-                if (d.id.name === exportedFunction) {
-                  // debug("declare variable", d);
-                  if (
-                    d.init?.type === "FunctionExpression" ||
-                    d.init?.type === "ArrowFunctionExpression"
-                  ) {
-                    if (d.init.async) {
-                      isAsync = true;
-                    }
-                  }
-                }
-              }
+      if (node.source && typeof node.source.value === "string") {
+        const otherPath =
+          node.source.value.startsWith(".") || node.source.value.startsWith("/")
+            ? resolve(node.source.value, sourcePath)
+            : null;
+        if (otherPath != null) {
+          const srcAsyncs = analyzeSource(otherPath);
+          for (const spec of node.specifiers) {
+            if (srcAsyncs.has(spec.local.name)) {
+              asyncExports.add(spec.exported.name);
             }
-          });
-          break;
-        case "Identifier":
-          debug(
-            "Identifier",
-            "need to file the function",
-            node.declaration.name
-          );
-          importedRootCollection.find(j.VariableDeclaration).map((d) => {
-            // debug("declaration", d.value.declarations);
-            d.value.declarations.map((d) => {
-              if (d.type === "VariableDeclarator") {
-                if (d.id.type === "Identifier") {
-                  if (d.id.name === exportedFunction) {
-                    // debug("found variable", d);
-                    // check is async function
-                    if (
-                      d.init?.type === "FunctionExpression" ||
-                      d.init?.type === "ArrowFunctionExpression"
-                    ) {
-                      if (d.init.async) {
-                        isAsync = true;
-                      }
-                    }
-                  }
-                }
+          }
+        }
+      } else if (node.declaration == null) {
+        for (const spec of node.specifiers) {
+          if (isVariableDeclarationAsync(col, spec.local.name)) {
+            asyncExports.add(spec.exported.name);
+          }
+        }
+      } else {
+        switch (node.declaration?.type) {
+          case "FunctionDeclaration":
+            // debug("FunctionDeclaration", node.declaration);
+            if (node.declaration.id?.name != null && node.declaration.async) {
+              asyncExports.add(node.declaration.id?.name);
+            }
+            break;
+          case "VariableDeclaration":
+            // debug("VariableDeclaration", node.declaration.declarations);
+            node.declaration.declarations.map((d) => {
+              if (
+                d.type === "VariableDeclarator" &&
+                d.id.type === "Identifier" &&
+                (d.init?.type === "FunctionExpression" ||
+                  d.init?.type === "ArrowFunctionExpression") &&
+                d.init.async
+              ) {
+                // debug("declare variable", d);
+                asyncExports.add(d.id.name);
               }
             });
+            break;
+        }
+      }
+    });
 
-            return null;
-          });
+    const isDefaultAsync = col.find(j.ExportDefaultDeclaration).some((sp) => {
+      const node = sp.value;
+      switch (node.declaration?.type) {
+        case "FunctionDeclaration":
+        case "ArrowFunctionExpression":
+          return node.declaration.async;
+        case "Identifier":
+          return isVariableDeclarationAsync(col, node.declaration.name);
+        default:
+          return false;
       }
-    };
-
-    // search for exported function
-    debug("find all exports");
-    switch (exportType) {
-      case "default": {
-        importedRootCollection.find(j.ExportDefaultDeclaration).map((sp) => {
-          debug("export default node:", j(sp).toSource());
-          handleExportDeclaration(sp.value);
-          return null;
-        });
-        break;
-      }
-      case "named": {
-        importedRootCollection.find(j.ExportNamedDeclaration).map((sp) => {
-          debug("export named node:", j(sp).toSource());
-          handleExportDeclaration(sp.value);
-          return null;
-        });
-        break;
-      }
+    });
+    if (isDefaultAsync) {
+      asyncExports.add("default");
     }
 
-    debug("===analyze source end===");
-
-    return isAsync;
-  };
+    return asyncExports;
+  }
 
   // find all imported async functions
   const importedNodes = rootCollection.find(j.ImportDeclaration);
-  importedNodes.map((p) => {
-    debug("\n=====imported node source:", j(p).toSource());
-    if (!p.value.source.value || typeof p.value.source.value !== "string") {
-      return null;
-    }
-    if (!/^[\/\.]/.test(p.value.source.value)) {
-      return null;
+  importedNodes.forEach((p) => {
+    const declNode = p.value;
+    const isPath =
+      typeof declNode.source.value === "string" &&
+      (declNode.source.value.startsWith(".") ||
+        declNode.source.value.startsWith("/"));
+    if (!isPath) {
+      return;
     }
 
-    switch (p.value.type) {
-      case "ImportDeclaration": {
-        p.value.specifiers?.map((spec) => {
-          switch (spec.type) {
-            case "ImportDefaultSpecifier": {
-              debug("====ImportDefaultSpecifier name:", spec.local?.name);
-              if (
-                spec.local?.name &&
-                typeof p.value.source.value === "string"
-              ) {
-                const isAsyncFunction = analyzeSource({
-                  exportedFunction: spec.local?.name,
-                  fileSource: p.value.source.value,
-                  exportType: "default",
-                });
-                debug("==>is async function:", isAsyncFunction);
-                if (isAsyncFunction) {
-                  if (
-                    convertAllCallExpressionToAsync(
-                      spec.local.name,
-                      rootCollection,
-                      j
-                    )
-                  ) {
-                    fileChanged = true;
-                  }
-                }
-              }
-              break;
-            }
-            case "ImportSpecifier": {
-              debug("====ImportSpecifier name:", spec.local?.name);
-              if (
-                spec.local?.name &&
-                typeof p.value.source.value === "string"
-              ) {
-                const isAsyncFunction = analyzeSource({
-                  exportedFunction: spec.local?.name,
-                  fileSource: p.value.source.value,
-                  exportType: "named",
-                });
-                debug("==>is async function:", isAsyncFunction);
-                if (isAsyncFunction) {
-                  if (
-                    convertAllCallExpressionToAsync(
-                      spec.local.name,
-                      rootCollection,
-                      j
-                    )
-                  ) {
-                    fileChanged = true;
-                  }
-                }
-              }
-              break;
-            }
+    const src = resolve(declNode.source.value, fileInfo.path);
+    if (src == null) {
+      debug2("did not resolve", j(p).toSource(), "from", fileInfo.path, src);
+      return;
+    }
+
+    const asyncExports = analyzeSource(src);
+    if (asyncExports.size === 0) {
+      return;
+    }
+
+    for (const spec of declNode.specifiers) {
+      if (spec.type === "ImportNamespaceSpecifier") {
+        for (const memberName of Array.from(asyncExports)) {
+          if (
+            convertAllMemberExpressionCallToAsync(
+              spec.local.name,
+              memberName,
+              rootCollection,
+              j
+            )
+          ) {
+            fileChanged = true;
           }
-        });
-        break;
+        }
+      } else if (spec.type === "ImportDefaultSpecifier") {
+        if (
+          asyncExports.has("default") &&
+          convertAllCallExpressionToAsync(spec.local.name, rootCollection, j)
+        ) {
+          fileChanged = true;
+        }
+      } else if (spec.type === "ImportSpecifier") {
+        if (
+          asyncExports.has(spec.imported.name) &&
+          convertAllCallExpressionToAsync(spec.local.name, rootCollection, j)
+        ) {
+          fileChanged = true;
+        }
       }
     }
-    debug("=====imported node source end=====");
 
-    return null;
+    debug("=====imported node source end=====");
   });
 
   if (fileChanged) {

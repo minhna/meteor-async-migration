@@ -10,7 +10,8 @@ import {
   ImportDeclaration,
   TSTypeAnnotation,
 } from "jscodeshift";
-import fs from "fs";
+import * as fs from "node:fs";
+import * as path from 'node:path';
 import CONSTANTS from "./constants";
 import { type } from "os";
 
@@ -443,7 +444,10 @@ export const getFileContent = (path: string) => {
   let fileContent: Buffer | null = null;
   let realPath: string | undefined;
 
-  if (/(\.js|\.ts)$/.test(path)) {
+  if (fs.existsSync(path) && fs.statSync(path).isFile()) {
+    realPath = path;
+    fileContent = fs.readFileSync(realPath)
+  } else if (/(\.js|\.ts)$/.test(path)) {
     try {
       realPath = path;
       fileContent = fs.readFileSync(realPath);
@@ -490,10 +494,11 @@ export const getRealImportSource = (
   importPath: string,
   currentPath: string
 ): string => {
-  if (/^\//.test(importPath)) {
-    return CONSTANTS.METEOR_ROOT_DIRECTORY + importPath;
+  if (importPath.startsWith('/')) {
+    return path.join(CONSTANTS.METEOR_ROOT_DIRECTORY, importPath.slice(1));
   }
-  return getPathFromSource(currentPath) + "/" + importPath.replace(/^\.\//, "");
+  return path.join(getPathFromSource(currentPath), importPath)
+  // return  + "/" + importPath.replace(/^\.\//, "");
 };
 
 export const isMongoCollection = (name: string, collection: Collection) => {

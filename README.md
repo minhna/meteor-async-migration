@@ -97,3 +97,5 @@ While converting the codebase, I had some issues so I wrote some transforms to h
 Use `jscodeshift` command directly
 Run with `--dry -p` options to test if the scrip works
 Run `jscodeshift --help` for more information
+
+![Meteor Developer](https://i.imgflip.com/851zsi.jpg)
